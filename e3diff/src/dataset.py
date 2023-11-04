@@ -3,6 +3,7 @@ import urllib.request
 import functools
 import itertools
 import tarfile
+import random
 import io
 
 import tensorflow as tf
@@ -75,13 +76,15 @@ def create_tfrecord(dataset_dir: Path, filename: str):
         edges_all.append(edges)
         edge_masks_all.append(edge_masks)
 
+    dataset = list(zip(
+        coords_all, atoms_all, edges_all, masks_all, edge_masks_all,
+        strict=True
+    ))
+    random.shuffle(dataset)
 
     filepath = str(dataset_dir / filename)
     with tf.io.TFRecordWriter(filepath) as writer:
-        for coords, atoms, edges, masks, edge_masks in tqdm(zip(
-            coords_all, atoms_all, edges_all, masks_all, edge_masks_all,
-            strict=True
-        )):
+        for coords, atoms, edges, masks, edge_masks in tqdm(dataset):
             record = tf.train.Example(
                 features=tf.train.Features(
                     feature={
@@ -119,3 +122,53 @@ def get_edges(n_atoms: int):
     ]
     edge_masks = tf.convert_to_tensor(edge_masks, dtype=tf.float32)
     return edges, edge_masks
+
+
+def deserialize(serialized_data):
+    data = tf.io.parse_example(
+        serialized_data,
+        features={
+            'coords': tf.io.FixedLenFeature([], tf.string),
+            'atoms': tf.io.FixedLenFeature([], tf.string),
+            'edges': tf.io.FixedLenFeature([], tf.string),
+            'masks': tf.io.FixedLenFeature([], tf.string),
+            'edge_masks': tf.io.FixedLenFeature([], tf.string),
+        }
+    )
+    coords = tf.reshape(
+        tf.io.decode_raw(data['coords'], tf.float32),
+        (settings.MAX_NUM_ATOMS, -1)
+    )
+    atoms = tf.reshape(
+        tf.io.decode_raw(data['atoms'], tf.float32),
+        (settings.MAX_NUM_ATOMS, -1)
+    )
+    edges = tf.reshape(
+        tf.io.decode_raw(data['edges'], tf.int32),
+        (-1, 2)
+    )
+    masks = tf.reshape(
+        tf.io.decode_raw(data['masks'], tf.float32),
+        (-1,)
+    )
+    edge_masks = tf.reshape(
+        tf.io.decode_raw(data['edge_masks'], tf.float32),
+        (-1,)
+    )
+    return coords, atoms, edges, masks, edge_masks
+
+
+def load_dataset(tfrecord_path: str, batch_size: int):
+
+    dataset = (
+        tf.data.TFRecordDataset(
+            filenames=[tfrecord_path],
+            num_parallel_reads=tf.data.AUTOTUNE,
+        )
+        .shuffle(4096, reshuffle_each_iteration=True)
+        .repeat()
+        .map(deserialize, num_parallel_calls=tf.data.AUTOTUNE)
+        .batch(batch_size)
+        .prefetch(tf.data.AUTOTUNE)
+    )
+    return dataset
