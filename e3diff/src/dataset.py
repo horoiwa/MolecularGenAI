@@ -8,6 +8,7 @@ import io
 import tensorflow as tf
 from rdkit import Chem
 from rdkit.Chem import Descriptors
+from tqdm import tqdm
 
 from src import settings
 
@@ -21,7 +22,7 @@ def download_qm9(dataset_dir: Path):
         tar.extractall(path=str(dataset_dir))
 
 
-def create_tfrecord(dataset_dir: Path):
+def create_tfrecord(dataset_dir: Path, filename: str):
     coords_all, atoms_all, masks_all, edges_all, edge_masks_all = [], [], [], [], []
 
     sdf_path = dataset_dir / "gdb9.sdf"
@@ -74,32 +75,30 @@ def create_tfrecord(dataset_dir: Path):
         edges_all.append(edges)
         edge_masks_all.append(edge_masks)
 
-        if n >= 3000:
-            break
 
-    filepath = str(dataset_dir / "QM9.tfrecord")
+    filepath = str(dataset_dir / filename)
     with tf.io.TFRecordWriter(filepath) as writer:
-        for coords, atoms, edges, masks, edge_masks in zip(
+        for coords, atoms, edges, masks, edge_masks in tqdm(zip(
             coords_all, atoms_all, edges_all, masks_all, edge_masks_all,
             strict=True
-        ):
+        )):
             record = tf.train.Example(
                 features=tf.train.Features(
                     feature={
                         "coords": tf.train.Feature(
-                            float_list=tf.train.FloatList(value=tf.reshape(coords, -1))
+                            bytes_list=tf.train.BytesList(value=[coords.numpy().tostring()])
                         ),
                         "atoms": tf.train.Feature(
-                            float_list=tf.train.FloatList(value=tf.reshape(atoms, -1))
+                            bytes_list=tf.train.BytesList(value=[atoms.numpy().tostring()])
                         ),
                         "edges": tf.train.Feature(
-                            int64_list=tf.train.Int64List(value=tf.reshape(edges, -1))
+                            bytes_list=tf.train.BytesList(value=[edges.numpy().tostring()])
                         ),
                         "masks": tf.train.Feature(
-                            float_list=tf.train.FloatList(value=tf.reshape(masks, -1))
+                            bytes_list=tf.train.BytesList(value=[masks.numpy().tostring()])
                         ),
                         "edge_masks": tf.train.Feature(
-                            float_list=tf.train.FloatList(value=tf.reshape(edge_masks, -1))
+                            bytes_list=tf.train.BytesList(value=[edge_masks.numpy().tostring()])
                         ),
                     }
                 )

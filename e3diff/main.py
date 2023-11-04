@@ -10,8 +10,11 @@ def prepare_dataset():
     if not (DATASET_DIR / "gdb9.sdf").exists():
         download_qm9(dataset_dir=DATASET_DIR)
 
-    if not (DATASET_DIR / "qm9.tfrecor").exists():
-        create_tfrecord(dataset_dir=DATASET_DIR)
+    filename = "QM9.tfrecord"
+    if not (DATASET_DIR / filename).exists():
+        create_tfrecord(dataset_dir=DATASET_DIR, filename=filename)
+
+    dataset = load_dataset(tfrecord_path=str(DATASET_DIR/filename))
 
 
 def train():
