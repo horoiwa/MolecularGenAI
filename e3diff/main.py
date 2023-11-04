@@ -1,26 +1,36 @@
 from pathlib import Path
 
-from src.dataset import download_qm9, create_tfrecord, load_dataset
+import tensorflow as tf
+
+from src.dataset import download_qm9, create_tfrecord, create_dataset_from_tfrecord
 
 
 DATASET_DIR = Path("./data")
-BATCH_SIZE = 32
+BATCH_SIZE = B = 8
 
 
-def prepare_dataset():
+def load_dataset(filename: str):
     if not (DATASET_DIR / "gdb9.sdf").exists():
         download_qm9(dataset_dir=DATASET_DIR)
 
-    filename = "QM9.tfrecord"
     if not (DATASET_DIR / filename).exists():
         create_tfrecord(dataset_dir=DATASET_DIR, filename=filename)
 
-    dataset = load_dataset(tfrecord_path=str(DATASET_DIR/filename), batch_size=BATCH_SIZE)
-    for data in dataset:
-        import pdb; pdb.set_trace()
+    dataset = create_dataset_from_tfrecord(
+        tfrecord_path=str(DATASET_DIR/filename), batch_size=BATCH_SIZE
+    )
+
+    #for (coords, atoms, edges, masks, edge_masks) in dataset:
+    #    indices_from, indices_to = edges[..., 0:1], edges[..., 1:2]
+    #    nodes_from = tf.gather_nd(atoms, indices_from, batch_dims=1)
+    #    nodes_to = tf.gather_nd(atoms, indices_to, batch_dims=1)
+    #    break
+
+    return dataset
 
 
 def train():
+    dataset = load_dataset(filename="qm9.tfrecord")
     pass
 
 
@@ -29,6 +39,6 @@ def test():
 
 
 if __name__ == '__main__':
-    prepare_dataset()
+    load_dataset(filename="QM9.tfrecord")
     #train()
     #test()

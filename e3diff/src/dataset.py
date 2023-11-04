@@ -138,28 +138,27 @@ def deserialize(serialized_data):
     coords = tf.reshape(
         tf.io.decode_raw(data['coords'], tf.float32),
         (settings.MAX_NUM_ATOMS, -1)
-    )
+    )  # (B, N, 3)
     atoms = tf.reshape(
         tf.io.decode_raw(data['atoms'], tf.float32),
         (settings.MAX_NUM_ATOMS, -1)
-    )
+    )  # (B, N, 5)
     edges = tf.reshape(
         tf.io.decode_raw(data['edges'], tf.int32),
         (-1, 2)
-    )
+    )  # (B, N*N, 2)
     masks = tf.reshape(
         tf.io.decode_raw(data['masks'], tf.float32),
-        (-1,)
-    )
+        (-1, 1)
+    )  # (B, N*N, 1)
     edge_masks = tf.reshape(
         tf.io.decode_raw(data['edge_masks'], tf.float32),
-        (-1,)
-    )
+        (-1, 1)
+    )  # (B, N*N, 1)
     return coords, atoms, edges, masks, edge_masks
 
 
-def load_dataset(tfrecord_path: str, batch_size: int):
-
+def create_dataset_from_tfrecord(tfrecord_path: str, batch_size: int):
     dataset = (
         tf.data.TFRecordDataset(
             filenames=[tfrecord_path],
