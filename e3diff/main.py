@@ -3,10 +3,12 @@ from pathlib import Path
 import tensorflow as tf
 
 from src.dataset import download_qm9, create_tfrecord, create_dataset_from_tfrecord
+from src.models import EquivariantDiffusionModel
 
 
 DATASET_DIR = Path("./data")
-BATCH_SIZE = B = 8
+BATCH_SIZE = B = 10
+#BATCH_SIZE = B = 64
 
 
 def load_dataset(filename: str):
@@ -31,7 +33,20 @@ def load_dataset(filename: str):
 
 def train():
     dataset = load_dataset(filename="qm9.tfrecord")
-    pass
+    model = EquivariantDiffusionModel()
+    optimizer = tf.keras.optimizers.AdamW(lr=1e-4, weight_decay=1e-12)
+
+    for (atom_coords, atom_types, edges, masks, edge_masks) in dataset:
+        #with tf.GradientTape() as tape:
+        loss = model.compute_loss(
+            atom_coords, atom_types, edges, masks, edge_masks
+        )
+
+        #variables = model.network.trainable_variables
+        #grads = tape.garadient(loss, variables)
+        #optimizer.apply_gradients(zip(grads, variables))
+
+
 
 
 def test():
@@ -39,6 +54,5 @@ def test():
 
 
 if __name__ == '__main__':
-    load_dataset(filename="QM9.tfrecord")
-    #train()
-    #test()
+    train()
+    test()
