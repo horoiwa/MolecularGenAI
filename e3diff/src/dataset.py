@@ -51,7 +51,7 @@ def create_tfrecord(dataset_dir: Path, filename: str):
         assert len(atoms_int) == settings.MAX_NUM_ATOMS
         atoms_int = tf.convert_to_tensor(atoms_int, dtype=tf.int32)
         atoms_onehot = tf.squeeze(
-            tf.one_hot(indices=atoms_int, depth=len(settings.ATOM_MAP)+1, dtype=tf.float32),
+            tf.one_hot(indices=atoms_int, depth=settings.N_ATOM_TYPES, dtype=tf.float32),
             axis=1,
         ) * mask
 
@@ -142,7 +142,7 @@ def deserialize(serialized_data):
     atoms = tf.reshape(
         tf.io.decode_raw(data['atoms'], tf.float32),
         (settings.MAX_NUM_ATOMS, -1)
-    )  # (B, N, 5)
+    )  # (B, N, 4)
     edges = tf.reshape(
         tf.io.decode_raw(data['edges'], tf.int32),
         (-1, 2)

@@ -34,7 +34,7 @@ def load_dataset(filename: str):
 def train():
     dataset = load_dataset(filename="qm9.tfrecord")
     model = EquivariantDiffusionModel()
-    optimizer = tf.keras.optimizers.AdamW(lr=1e-4, weight_decay=1e-12)
+    optimizer = tf.keras.optimizers.AdamW(learning_rate=1e-4, weight_decay=1e-12)
 
     for (atom_coords, atom_types, edges, masks, edge_masks) in dataset:
         #with tf.GradientTape() as tape:
