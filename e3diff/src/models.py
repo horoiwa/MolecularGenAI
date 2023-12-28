@@ -16,7 +16,28 @@ def align_with_center_of_gravity(coords, masks):
         import pdb; pdb.set_trace()
     return coords_centered
 
-def get_noise_schedule(T: int, s=0.008):
+
+def get_polynomial_noise_schedule(num_steps: int, s=1e-5):
+    T = num_steps + 1
+    t = tf.linspace(0, T, T)
+
+    alphas_cumprod = (1.0 - (t/(T)) ** 2) ** 2
+
+    # clipping procedure (Appendix B)
+    _alphas_cumprod = tf.concat([[1.], alphas_cumprod], axis=-1)
+    alphas = tf.clip_by_value(
+        _alphas_cumprod[1:] / _alphas_cumprod[:-1],
+        clip_value_max=1.0,
+        clip_value_min=0.001
+    )
+    betas = 1.0 - alphas
+
+    alphas_cumprod = (1 - 2 * s) * tf.math.cumprod(alphas) + s
+
+    return alphas_cumprod, alphas, betas
+
+
+def get_cosine_noise_schedule(T: int, s=0.008):
     """cosine_schedule"""
     t = tf.cast(tf.range(0, T+1), tf.float32)
     _alphas_cumprod = tf.cos(0.5 * np.pi * ((t / T) + s ) / (1 + s))**2
@@ -41,14 +62,13 @@ class EquivariantDiffusionModel(tf.keras.Model):
 
     def __init__(self):
         super(EquivariantDiffusionModel, self).__init__()
+
         self.num_steps = 1000
         self.scale_coord, self.scale_atom = 1.0, 4.0
 
-        # α: √1-β , σ: √β より alphas=√1-σ^2
-        self.alphas, self.betas = get_noise_schedule(T=self.num_steps)
-        self.alphas_cumprod = tf.math.cumprod(self.alphas)
+        self.alphas_cumprod, self.alphas, self.betas = get_polynomial_noise_schedule(self.num_steps)
         self.alphas_cumprod_prev = tf.concat([[1.], self.alphas_cumprod[:-1]], axis=0)
-        self.variance = self.betas * (1.0 - self.alphas_cumprod_prev) / (1.0 - self.alphas_cumprod)
+        #self.variance = self.betas * (1.0 - self.alphas_cumprod_prev) / (1.0 - self.alphas_cumprod)
 
     def call(self, x):
         """ predict added noise ε
