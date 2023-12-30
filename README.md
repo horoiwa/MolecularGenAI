@@ -1,1 +1,1 @@
-# MolecularDiffusion
+# GenAI for molecular design
