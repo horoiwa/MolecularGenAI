@@ -22,12 +22,6 @@ def load_dataset(filename: str):
         tfrecord_path=str(DATASET_DIR/filename), batch_size=BATCH_SIZE
     )
 
-    #for (coords, atoms, edges, masks, edge_masks) in dataset:
-    #    indices_from, indices_to = edges[..., 0:1], edges[..., 1:2]
-    #    nodes_from = tf.gather_nd(atoms, indices_from, batch_dims=1)
-    #    nodes_to = tf.gather_nd(atoms, indices_to, batch_dims=1)
-    #    break
-
     return dataset
 
 
@@ -36,10 +30,10 @@ def train():
     model = EquivariantDiffusionModel()
     optimizer = tf.keras.optimizers.AdamW(learning_rate=1e-4, weight_decay=1e-12)
 
-    for (atom_coords, atom_types, edges, masks, edge_masks) in dataset:
+    for (atom_coords, atom_types, edge_indices, node_masks, edge_masks) in dataset:
         #with tf.GradientTape() as tape:
         loss = model.compute_loss(
-            atom_coords, atom_types, edges, masks, edge_masks
+            atom_coords, atom_types, edge_indices, node_masks, edge_masks
         )
 
         #variables = model.network.trainable_variables
