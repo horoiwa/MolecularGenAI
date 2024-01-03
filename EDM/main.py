@@ -1,4 +1,5 @@
 from pathlib import Path
+import shutil
 
 import tensorflow as tf
 
@@ -26,11 +27,17 @@ def load_dataset(filename: str):
 
 
 def train():
+
+    logdir = Path(__file__).parent / "log"
+    if logdir.exists():
+        shutil.rmtree(logdir)
+    summary_writer = tf.summary.create_file_writer(str(logdir))
+
     dataset = load_dataset(filename="qm9.tfrecord")
     model = EquivariantDiffusionModel()
     optimizer = tf.keras.optimizers.AdamW(learning_rate=1e-4, weight_decay=1e-12)
 
-    for (atom_coords, atom_types, edge_indices, node_masks, edge_masks) in dataset:
+    for i, (atom_coords, atom_types, edge_indices, node_masks, edge_masks) in enumerate(dataset):
 
         with tf.GradientTape() as tape:
             loss = model.compute_loss(
@@ -39,6 +46,10 @@ def train():
         variables = model.network.trainable_variables
         grads = tape.garadient(loss, variables)
         optimizer.apply_gradients(zip(grads, variables))
+
+        if i % 10 == 0
+            with summary_writer.as_default():
+                tf.summary.scalar("loss", loss, step=n)
 
 
 def test():
