@@ -9,8 +9,7 @@ from src.models import EquivariantDiffusionModel
 
 
 DATASET_DIR = Path("./data")
-BATCH_SIZE = B = 10
-#BATCH_SIZE = B = 64
+BATCH_SIZE = 48
 
 
 def load_dataset(filename: str):
@@ -27,13 +26,13 @@ def load_dataset(filename: str):
     return dataset
 
 
-def train(resume=False):
+def train(resume: int = 0):
 
     model = EquivariantDiffusionModel()
     dataset = load_dataset(filename="qm9.tfrecord")
     optimizer = tf.keras.optimizers.AdamW(learning_rate=1e-4, weight_decay=1e-12)
 
-    if not resume:
+    if resume == 0:
         logdir = Path(__file__).parent / "log"
         if logdir.exists():
             shutil.rmtree(logdir)
@@ -45,8 +44,9 @@ def train(resume=False):
     else:
         model.load_weights("checkpoints/edm")
 
-    s = time.time()
-    for i, (atom_coords, atom_types, edge_indices, node_masks, edge_masks) in enumerate(dataset, start=1):
+    now = time.time()
+    start = 1 if resume == 0 else resume
+    for i, (atom_coords, atom_types, edge_indices, node_masks, edge_masks) in enumerate(dataset, start=start):
 
         with tf.GradientTape() as tape:
             loss = model.compute_loss(
@@ -57,16 +57,16 @@ def train(resume=False):
         grads = tape.gradient(loss, variables)
         optimizer.apply_gradients(zip(grads, variables))
 
-        if i % 300 == 0:
-            elapsed = time.time() - s
-            s = time.time()
+        if i % 100 == 0:
+            elapsed = time.time() - now
+            now = time.time()
             tf.print("------------")
             tf.print(i, loss.numpy())
             tf.print(f"{elapsed:.1f}")
             with summary_writer.as_default():
                 tf.summary.scalar("loss", loss, step=i)
 
-        if i % 100_000 == 0:
+        if i % 50_000 == 0:
             save_path = savedir / "edm"
             model.save(str(save_path))
 
