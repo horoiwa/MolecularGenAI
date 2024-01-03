@@ -1,5 +1,6 @@
 from pathlib import Path
 import shutil
+import time
 
 import tensorflow as tf
 
@@ -26,30 +27,48 @@ def load_dataset(filename: str):
     return dataset
 
 
-def train():
+def train(resume=False):
 
-    logdir = Path(__file__).parent / "log"
-    if logdir.exists():
-        shutil.rmtree(logdir)
-    summary_writer = tf.summary.create_file_writer(str(logdir))
-
-    dataset = load_dataset(filename="qm9.tfrecord")
     model = EquivariantDiffusionModel()
+    dataset = load_dataset(filename="qm9.tfrecord")
     optimizer = tf.keras.optimizers.AdamW(learning_rate=1e-4, weight_decay=1e-12)
 
-    for i, (atom_coords, atom_types, edge_indices, node_masks, edge_masks) in enumerate(dataset):
+    if not resume:
+        logdir = Path(__file__).parent / "log"
+        if logdir.exists():
+            shutil.rmtree(logdir)
+        summary_writer = tf.summary.create_file_writer(str(logdir))
+
+        savedir = Path(__file__).parent / "checkpoints"
+        if savedir.exists():
+            shutil.rmtree(savedir)
+    else:
+        model.load_weights("checkpoints/edm")
+
+    s = time.time()
+    for i, (atom_coords, atom_types, edge_indices, node_masks, edge_masks) in enumerate(dataset, start=1):
 
         with tf.GradientTape() as tape:
             loss = model.compute_loss(
                 atom_coords, atom_types, edge_indices, node_masks, edge_masks
             )
-        variables = model.network.trainable_variables
-        grads = tape.garadient(loss, variables)
+
+        variables = model.trainable_variables
+        grads = tape.gradient(loss, variables)
         optimizer.apply_gradients(zip(grads, variables))
 
-        if i % 10 == 0
+        if i % 300 == 0:
+            elapsed = time.time() - s
+            s = time.time()
+            tf.print("------------")
+            tf.print(i, loss.numpy())
+            tf.print(f"{elapsed:.1f}")
             with summary_writer.as_default():
-                tf.summary.scalar("loss", loss, step=n)
+                tf.summary.scalar("loss", loss, step=i)
+
+        if i % 100_000 == 0:
+            save_path = savedir / "edm"
+            model.save(str(save_path))
 
 
 def test():

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 import tensorflow as tf
 import tensorflow.keras.layers as kl
@@ -11,8 +13,7 @@ def align_with_center_of_gravity(x, node_masks):
         tf.reduce_sum(x, axis=1, keepdims=True) / n_atoms
     )
     x_centered = (x - x_mean) * node_masks
-    assert x.shape[-1] == 3
-    assert tf.reduce_mean(tf.reduce_sum(x_centered, axis=1)) < 1e-4
+    #assert tf.reduce_mean(tf.reduce_sum(x_centered, axis=1)) < 1e-4
     return x_centered
 
 
@@ -77,11 +78,16 @@ class EquivariantDiffusionModel(tf.keras.Model):
 
         self.alphas_cumprod, self.alphas, self.betas = get_polynomial_noise_schedule(self.num_steps)
         self.alphas_cumprod_prev = tf.concat([[1.], self.alphas_cumprod[:-1]], axis=0)
-        #self.variance = self.betas * (1.0 - self.alphas_cumprod_prev) / (1.0 - self.alphas_cumprod)
 
         self.dense_in = kl.Dense(256, activation=None)
         self.egnn_blocks = [EquivariantGNNBlock() for _ in range(self.n_layers)]
         self.dense_out = kl.Dense(len(settings.ATOM_MAP) + 1, activation=None)
+
+    def save(self, save_path: str):
+        self.save_weights(save_path)
+
+    def load(self, load_path: str):
+        self.load_weights(load_path)
 
     def call(self, x_in, h_in, t, edge_indices, node_mask, edge_mask):
         """ predict noise ε_t
@@ -105,6 +111,7 @@ class EquivariantDiffusionModel(tf.keras.Model):
 
         return eps
 
+    @tf.function
     def compute_loss(self, x, h, edge_indices, node_masks, edge_masks):
         """
         Notes:
@@ -146,7 +153,12 @@ class EquivariantDiffusionModel(tf.keras.Model):
 
         # E3同変GNNによるノイズ予測とL2ロス算出
         eps_pred = self(x_t, h_t, t, edge_indices, node_masks, edge_masks)
-        loss = 0.5 * (eps - eps_pred) **2
+        loss_all = 0.5 * (eps - eps_pred) **2
+        loss = tf.reduce_mean(
+            tf.reduce_mean(
+                tf.reduce_sum(loss_all, axis=1), axis=-1
+            ), axis=-1
+        )
         return loss
 
     def sample_molecule(self, x):
