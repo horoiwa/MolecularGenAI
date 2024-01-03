@@ -213,16 +213,16 @@ class EquivariantGNNBlock(tf.keras.Model):
         h_out = h + self.dense_h(tf.concat([h, em_agg], axis=-1))
         return h_out
 
-    def update_x(self, x, diff_ij, d_ij, feat, indices_i):
+    def update_x(self, x_in, diff_ij, d_ij, feat, indices_i):
         # tanhでのアクティベーション後にリスケール
-        _x = self.dense_x(feat) * self.scale_factor  # (B, N*N, 1)
-        _x *= diff_ij / (d_ij + 1.0)                 # (B, N*N, 3)
-        _x = tf.expand_dims(_x, axis=2)               # (B, N*N, 1, 3)
+        x = self.dense_x(feat) * self.scale_factor  # (B, N*N, 1)
+        x *= diff_ij / (d_ij + 1.0)                 # (B, N*N, 3)
+        x = tf.expand_dims(x, axis=2)               # (B, N*N, 1, 3)
 
         indices_oh = tf.one_hot(
             tf.squeeze(indices_i, axis=-1), depth=settings.MAX_NUM_ATOMS, axis=-1,
         )                                                 # (B, N*N, N)
         indices_oh = tf.expand_dims(indices_oh, axis=-1)  # (B, N*N, N, 1)
-        x_agg = tf.reduce_sum(indices_oh * _x, axis=1)
-        x_out = x + x_agg
+        x_agg = tf.reduce_sum(indices_oh * x, axis=1)     # (B, N, 1)
+        x_out = x_in + x_agg
         return x_out

@@ -31,16 +31,14 @@ def train():
     optimizer = tf.keras.optimizers.AdamW(learning_rate=1e-4, weight_decay=1e-12)
 
     for (atom_coords, atom_types, edge_indices, node_masks, edge_masks) in dataset:
-        #with tf.GradientTape() as tape:
-        loss = model.compute_loss(
-            atom_coords, atom_types, edge_indices, node_masks, edge_masks
-        )
 
-        #variables = model.network.trainable_variables
-        #grads = tape.garadient(loss, variables)
-        #optimizer.apply_gradients(zip(grads, variables))
-
-
+        with tf.GradientTape() as tape:
+            loss = model.compute_loss(
+                atom_coords, atom_types, edge_indices, node_masks, edge_masks
+            )
+        variables = model.network.trainable_variables
+        grads = tape.garadient(loss, variables)
+        optimizer.apply_gradients(zip(grads, variables))
 
 
 def test():
