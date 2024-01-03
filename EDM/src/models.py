@@ -58,7 +58,7 @@ def sample_gaussian_noise(shape_x, shape_h, node_masks):
 
 
 @tf.function
-def compute_distances(x, edge_indices):
+def compute_distance(x, edge_indices):
     indices_from, indices_to = edge_indices[..., 0:1], edge_indices[..., 1:2]
     x_i = tf.gather_nd(x, indices_from, batch_dims=1)
     x_j = tf.gather_nd(x, indices_to, batch_dims=1)
@@ -72,7 +72,7 @@ class EquivariantDiffusionModel(tf.keras.Model):
         super(EquivariantDiffusionModel, self).__init__()
 
         self.num_steps = 1000
-        self.scale_coord, self.scale_atom = 1.0, 4.0
+        self.scale_x, self.scale_h = 1.0, 4.0
         self.n_layers = n_layers
 
         self.alphas_cumprod, self.alphas, self.betas = get_polynomial_noise_schedule(self.num_steps)
@@ -86,10 +86,9 @@ class EquivariantDiffusionModel(tf.keras.Model):
     def call(self, x_in, h_in, t, edge_indices, node_mask, edge_mask):
         """ predict noise ε_t
         """
+        d_ij = compute_distance(x_in, edge_indices) * edge_mask
         x, h = x_in, tf.concat([h_in, t], axis=-1)
         h = self.dense_in(h)
-
-        d_ij = compute_distances(x, edge_indices) * edge_mask
         for egnn_block in self.egnn_blocks:
             x, h = egnn_block(
                 x=x, h=h, a=d_ij, edge_indices=edge_indices,
@@ -106,17 +105,30 @@ class EquivariantDiffusionModel(tf.keras.Model):
 
         return eps
 
-    def compute_loss(self, coords, atoms, edge_indices, node_masks, edge_masks):
-        B, N = coords.shape[0], coords.shape[1]
+    def compute_loss(self, x, h, edge_indices, node_masks, edge_masks):
+        """
+        Notes:
+            B: バッチサイズ
+            N: 最大原子数(settings.MAX_NUM_ATOMS)
+        Args:
+            x: xyz座標, shape==(B, N, 3)
+            h: OneHot encoded原子タイプ, shape==(B, N, len(settings.ATOM_MAP))
+            edge_indices: すべての２つの原子の組み合わせ番号 shape==(B, N*N, ...)
+            node_masks: paddingされたダミー原子でないか, shape==(B, N, ...)
+            edge_masks: エッジの両端がダミー原子でないか, shape==(B, N*N, ...)
+        """
 
         # 重心が(0,0,0)となるように平行移動し、スケーリング
-        coords = align_with_center_of_gravity(coords, node_masks)
-        x_0, h_0 = coords / self.scale_coord, atoms / self.scale_atom
+        B, N = x.shape[0], x.shape[1]
+        x_0 = align_with_center_of_gravity(x, node_masks) / self.scale_x
+        h_0 = h / self.scale_h
         z_0 = tf.concat([x_0, h_0], axis=-1)  # (B, N, 3+4)
 
         # 拡散タイムステップの決定: 0 <= t <= T
         timesteps = tf.random.uniform(
-            shape=(x_0.shape[0], 1), minval=0, maxval=self.num_steps+1, dtype=tf.int32
+            shape=(x_0.shape[0], 1), minval=0,
+            maxval=self.num_steps+1,
+            dtype=tf.int32
         )
         t = tf.reshape(
             tf.repeat(tf.cast(timesteps / self.num_steps, tf.float32), repeats=N, axis=1),
@@ -127,21 +139,14 @@ class EquivariantDiffusionModel(tf.keras.Model):
             shape=(-1, 1, 1)
         )
 
-        # 拡散プロセス
+        # 順拡散プロセス
         eps = sample_gaussian_noise(shape_x=x_0.shape, shape_h=h_0.shape, node_masks=node_masks)
         z_t = tf.sqrt(alphas_cumprod_t) * z_0 + tf.sqrt(1. - alphas_cumprod_t) * eps
         x_t, h_t = z_t[..., :3], z_t[..., 3:]
 
-        # ノイズ予測
+        # E3同変GNNによるノイズ予測とL2ロス算出
         eps_pred = self(x_t, h_t, t, edge_indices, node_masks, edge_masks)
-        import pdb; pdb.set_trace()
-
-        is_t0 = tf.cast(timesteps == 0, tf.int32)
-        loss_not_t0 = 0.5 * (eps - eps_pred) **2
-        loss_t0 = None
-
-        # マスク考慮して平均しないと原子数少ないものが有利になる?
-        loss = (1. - is_t0) * loss_not_t0 + is_t0 * loss_t0
+        loss = 0.5 * (eps - eps_pred) **2
         return loss
 
     def sample_molecule(self, x):
