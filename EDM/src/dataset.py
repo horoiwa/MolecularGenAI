@@ -116,7 +116,7 @@ def get_edges(n_atoms: int):
     edges = tf.convert_to_tensor(edges, dtype=tf.int32)
 
     edge_masks = [
-        [1] if (i < n_atoms) and (i < n_atoms) and (i != j) else [0]
+        [1] if (i < n_atoms) and (j < n_atoms) and (i != j) else [0]
         for i, j in itertools.product(indices, indices)
     ]
     edge_masks = tf.convert_to_tensor(edge_masks, dtype=tf.float32)

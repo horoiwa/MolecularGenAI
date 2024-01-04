@@ -23,7 +23,6 @@ def load_dataset(filename: str):
     dataset = create_dataset_from_tfrecord(
         tfrecord_path=str(DATASET_DIR/filename), batch_size=BATCH_SIZE
     )
-
     return dataset
 
 
