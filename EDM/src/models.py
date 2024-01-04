@@ -102,12 +102,12 @@ class EquivariantDiffusionModel(tf.keras.Model):
                 x=x, h=h, edge_attr=d_ij, edge_indices=edge_indices,
                 node_mask=node_mask, edge_mask=edge_mask,
             )
-
         x_out = (x - x_in) * node_mask
         x_out = align_with_center_of_gravity(x_out, node_mask)
 
         h_out = self.dense_out(h) * node_mask
         h_out = (h_out[..., :-1])
+        import pdb; pdb.set_trace()
 
         eps = tf.concat([x_out, h_out], axis=-1)
 
@@ -205,12 +205,12 @@ class EquivariantGNNBlock(tf.keras.Model):
         h_i = tf.gather_nd(h, indices_i, batch_dims=1)
         h_j = tf.gather_nd(h, indices_j, batch_dims=1)
 
-        feat = tf.concat([h_i, h_j, d_ij**2, edge_attr], axis=-1)
+        feat = tf.concat([h_i, h_j, d_ij**2, edge_attr], axis=-1) * edge_mask
         x_out = self.update_x(x, diff_ij, d_ij, feat, indices_i) * node_mask
         h_out = self.update_h(h, feat, indices_i) * node_mask
         return x_out, h_out
 
-    def update_h(self, h, feat, indices_i):
+    def update_h(self, h_in, feat, indices_i):
         m_ij = self.dense_e(feat)
         e_ij = self.e_attention(m_ij)
         em_ij = e_ij * m_ij
@@ -224,7 +224,7 @@ class EquivariantGNNBlock(tf.keras.Model):
         em_ij_oh= indices_oh * em_ij                      # (B, N*N. N, 256)
         em_agg = tf.reduce_sum(em_ij_oh, axis=1)          # (B, N, 256)
 
-        h_out = h + self.dense_h(tf.concat([h, em_agg], axis=-1))
+        h_out = h_in + self.dense_h(tf.concat([h_in, em_agg], axis=-1))
         return h_out
 
     def update_x(self, x_in, diff_ij, d_ij, feat, indices_i):
