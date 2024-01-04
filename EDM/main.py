@@ -9,7 +9,8 @@ from src.models import EquivariantDiffusionModel
 
 
 DATASET_DIR = Path("./data")
-BATCH_SIZE = 48
+#BATCH_SIZE = 48
+BATCH_SIZE = 10
 
 
 def load_dataset(filename: str):
@@ -47,7 +48,6 @@ def train(resume: int = 0):
     now = time.time()
     start = 1 if resume == 0 else resume
     for i, (atom_coords, atom_types, edge_indices, node_masks, edge_masks) in enumerate(dataset, start=start):
-
         with tf.GradientTape() as tape:
             loss = model.compute_loss(
                 atom_coords, atom_types, edge_indices, node_masks, edge_masks
@@ -62,13 +62,16 @@ def train(resume: int = 0):
             now = time.time()
             tf.print("------------")
             tf.print(i, loss.numpy())
-            tf.print(f"{elapsed:.1f}")
+            tf.print(f"{elapsed:.1f}sec")
             with summary_writer.as_default():
                 tf.summary.scalar("loss", loss, step=i)
 
-        if i % 50_000 == 0:
+        if i % 10_000 == 0:
             save_path = savedir / "edm"
             model.save(str(save_path))
+
+        if i >= 1_000_000:
+            break
 
 
 def test():
@@ -76,5 +79,5 @@ def test():
 
 
 if __name__ == '__main__':
-    train()
-    test()
+    train(resume=0)
+    #test()

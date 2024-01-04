@@ -79,9 +79,11 @@ class EquivariantDiffusionModel(tf.keras.Model):
         self.alphas_cumprod, self.alphas, self.betas = get_polynomial_noise_schedule(self.num_steps)
         self.alphas_cumprod_prev = tf.concat([[1.], self.alphas_cumprod[:-1]], axis=0)
 
-        self.dense_in = kl.Dense(256, activation=None)
+        self.dense_in = kl.Dense(256, activation=None, kernel_initializer='truncated_normal')
         self.egnn_blocks = [EquivariantGNNBlock() for _ in range(self.n_layers)]
-        self.dense_out = kl.Dense(len(settings.ATOM_MAP) + 1, activation=None)
+        self.dense_out = kl.Dense(
+            len(settings.ATOM_MAP) + 1, activation=None, kernel_initializer='truncated_normal'
+        )
 
     def save(self, save_path: str):
         self.save_weights(save_path)
@@ -97,7 +99,7 @@ class EquivariantDiffusionModel(tf.keras.Model):
         h = self.dense_in(h)
         for egnn_block in self.egnn_blocks:
             x, h = egnn_block(
-                x=x, h=h, a=d_ij, edge_indices=edge_indices,
+                x=x, h=h, edge_attr=d_ij, edge_indices=edge_indices,
                 node_mask=node_mask, edge_mask=edge_mask,
             )
 
@@ -111,7 +113,7 @@ class EquivariantDiffusionModel(tf.keras.Model):
 
         return eps
 
-    @tf.function
+    #@tf.function
     def compute_loss(self, x, h, edge_indices, node_masks, edge_masks):
         """
         Notes:
@@ -156,7 +158,7 @@ class EquivariantDiffusionModel(tf.keras.Model):
         loss_all = 0.5 * (eps - eps_pred) **2
         loss = tf.reduce_mean(
             tf.reduce_mean(
-                tf.reduce_sum(loss_all, axis=1), axis=-1
+                tf.reduce_mean(loss_all, axis=1), axis=-1
             ), axis=-1
         )
         return loss
@@ -174,24 +176,24 @@ class EquivariantGNNBlock(tf.keras.Model):
     def __init__(self):
         super(EquivariantGNNBlock, self).__init__()
         self.dense_e = tf.keras.Sequential([
-            kl.Dense(256, activation=tf.nn.silu),
-            kl.Dense(256, activation=tf.nn.silu),
+            kl.Dense(256, activation=tf.nn.silu, kernel_initializer='truncated_normal'),
+            kl.Dense(256, activation=tf.nn.silu, kernel_initializer='truncated_normal'),
         ])
-        self.e_attention = kl.Dense(1, activation='sigmoid')
+        self.e_attention = kl.Dense(1, activation='sigmoid', kernel_initializer='truncated_normal')
 
         self.dense_h = tf.keras.Sequential([
-            kl.Dense(256, activation=tf.nn.silu),
-            kl.Dense(256, activation=None),
+            kl.Dense(256, activation=tf.nn.silu, kernel_initializer='truncated_normal'),
+            kl.Dense(256, activation=None, kernel_initializer='truncated_normal'),
         ])
         self.dense_x = tf.keras.Sequential([
-            kl.Dense(256, activation=tf.nn.silu),
-            kl.Dense(256, activation=tf.nn.silu),
-            kl.Dense(1, activation="tanh", use_bias=False),
+            kl.Dense(256, activation=tf.nn.silu, kernel_initializer='truncated_normal'),
+            kl.Dense(256, activation=tf.nn.silu, kernel_initializer='truncated_normal'),
+            kl.Dense(1, activation="tanh", use_bias=False, kernel_initializer='truncated_normal'),
         ])
         self.scale_factor = 15.0
 
 
-    def call(self, x, h, a, edge_indices, node_mask, edge_mask):
+    def call(self, x, h, edge_attr, edge_indices, node_mask, edge_mask):
         indices_i, indices_j = edge_indices[..., 0:1], edge_indices[..., 1:2]
 
         x_i = tf.gather_nd(x, indices_i, batch_dims=1)
@@ -203,7 +205,7 @@ class EquivariantGNNBlock(tf.keras.Model):
         h_i = tf.gather_nd(h, indices_i, batch_dims=1)
         h_j = tf.gather_nd(h, indices_j, batch_dims=1)
 
-        feat = tf.concat([h_i, h_j, d_ij**2, a], axis=-1)
+        feat = tf.concat([h_i, h_j, d_ij**2, edge_attr], axis=-1)
         x_out = self.update_x(x, diff_ij, d_ij, feat, indices_i) * node_mask
         h_out = self.update_h(h, feat, indices_i) * node_mask
         return x_out, h_out

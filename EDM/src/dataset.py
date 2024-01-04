@@ -8,7 +8,6 @@ import io
 
 import tensorflow as tf
 from rdkit import Chem
-from rdkit.Chem import Descriptors
 from tqdm import tqdm
 
 from src import settings
