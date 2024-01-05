@@ -10,7 +10,6 @@ from src.models import EquivariantDiffusionModel
 
 DATASET_DIR = Path("./data")
 BATCH_SIZE = 48
-#BATCH_SIZE = 10
 
 
 def load_dataset(filename: str):
@@ -42,10 +41,10 @@ def train(resume: int = 0):
         if savedir.exists():
             shutil.rmtree(savedir)
     else:
-        model.load_weights("checkpoints/edm")
+        model.load_weights(f"checkpoints/edm_{resume}")
 
     now = time.time()
-    start = 1 if resume == 0 else resume
+    start = 1 if resume == 0 else resume + 1
     for i, (atom_coords, atom_types, edge_indices, node_masks, edge_masks) in enumerate(dataset, start=start):
         with tf.GradientTape() as tape:
             loss = model.compute_loss(
@@ -68,7 +67,7 @@ def train(resume: int = 0):
                 tf.summary.scalar("global_norm", norm, step=i)
 
         if i % 10_000 == 0:
-            save_path = savedir / "edm"
+            save_path = savedir / f"edm_{i}"
             model.save(str(save_path))
 
         if i > 1_000_000:
