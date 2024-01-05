@@ -9,8 +9,8 @@ from src.models import EquivariantDiffusionModel
 
 
 DATASET_DIR = Path("./data")
-#BATCH_SIZE = 48
-BATCH_SIZE = 10
+BATCH_SIZE = 48
+#BATCH_SIZE = 10
 
 
 def load_dataset(filename: str):
@@ -54,22 +54,24 @@ def train(resume: int = 0):
 
         variables = model.trainable_variables
         grads = tape.gradient(loss, variables)
+        grads, norm = tf.clip_by_global_norm(grads, 40.0)
         optimizer.apply_gradients(zip(grads, variables))
 
         if i % 100 == 0:
             elapsed = time.time() - now
             now = time.time()
             tf.print("------------")
-            tf.print(i, loss.numpy())
+            tf.print(i, loss.numpy(), norm.numpy())
             tf.print(f"{elapsed:.1f}sec")
             with summary_writer.as_default():
                 tf.summary.scalar("loss", loss, step=i)
+                tf.summary.scalar("global_norm", norm, step=i)
 
         if i % 10_000 == 0:
             save_path = savedir / "edm"
             model.save(str(save_path))
 
-        if i >= 1_000_000:
+        if i > 1_000_000:
             break
 
 

@@ -58,7 +58,6 @@ def sample_gaussian_noise(shape_x, shape_h, node_masks):
     return eps
 
 
-@tf.function
 def compute_distance(x, edge_indices):
     indices_from, indices_to = edge_indices[..., 0:1], edge_indices[..., 1:2]
     x_i = tf.gather_nd(x, indices_from, batch_dims=1)
@@ -107,13 +106,12 @@ class EquivariantDiffusionModel(tf.keras.Model):
 
         h_out = self.dense_out(h) * node_mask
         h_out = (h_out[..., :-1])
-        import pdb; pdb.set_trace()
 
         eps = tf.concat([x_out, h_out], axis=-1)
 
         return eps
 
-    #@tf.function
+    @tf.function
     def compute_loss(self, x, h, edge_indices, node_masks, edge_masks):
         """
         Notes:
@@ -214,29 +212,32 @@ class EquivariantGNNBlock(tf.keras.Model):
         m_ij = self.dense_e(feat)
         e_ij = self.e_attention(m_ij)
         em_ij = e_ij * m_ij
-
-        # やりたいことは em_ij.groupby(indices_i).sum()
-        indices_oh = tf.one_hot(
-            tf.squeeze(indices_i, axis=-1), depth=settings.MAX_NUM_ATOMS, axis=-1,
-        )
-        indices_oh = tf.expand_dims(indices_oh, axis=-1)  # (B, N*N, N, 1)
-        em_ij = tf.expand_dims(em_ij, axis=2)             # (B, N*N, 1, 256)
-        em_ij_oh= indices_oh * em_ij                      # (B, N*N. N, 256)
-        em_agg = tf.reduce_sum(em_ij_oh, axis=1)          # (B, N, 256)
-
+        em_agg = segemnt_sum_by_node(em_ij, indices_i)
         h_out = h_in + self.dense_h(tf.concat([h_in, em_agg], axis=-1))
         return h_out
 
     def update_x(self, x_in, diff_ij, d_ij, feat, indices_i):
         # tanhでのアクティベーション後にリスケール
-        x = self.dense_x(feat) * self.scale_factor  # (B, N*N, 1)
-        x *= diff_ij / (d_ij + 1.0)                 # (B, N*N, 3)
-        x = tf.expand_dims(x, axis=2)               # (B, N*N, 1, 3)
-
-        indices_oh = tf.one_hot(
-            tf.squeeze(indices_i, axis=-1), depth=settings.MAX_NUM_ATOMS, axis=-1,
-        )                                                 # (B, N*N, N)
-        indices_oh = tf.expand_dims(indices_oh, axis=-1)  # (B, N*N, N, 1)
-        x_agg = tf.reduce_sum(indices_oh * x, axis=1)     # (B, N, 1)
+        x = diff_ij / (d_ij + 1.0) * self.dense_x(feat) * self.scale_factor  # (B, N*N, 3) * (B, N*N, 1) -> (B, N*N, 3)
+        x_agg = segemnt_sum_by_node(x, indices_i)
         x_out = x_in + x_agg
         return x_out
+
+
+def segemnt_sum_by_node(data, indices_i):
+    """
+    やりたいことは単なるdata.groupby(indices_i).sum()だが、
+    tf.math.unsorted_segment_sumの仕様上、迂遠な処理が必要
+    """
+    B, NN, D = data.shape
+    data = tf.reshape(data, shape=(B*NN, D))  # (B, NN, D) -> (B*NN, D)
+    indices = tf.reshape(
+        tf.reshape(tf.range(B), shape=(B, 1)) * settings.MAX_NUM_ATOMS + tf.squeeze(indices_i, axis=-1),
+        shape=(B*NN,),
+    )
+    num_segments = B * settings.MAX_NUM_ATOMS
+    agg = tf.reshape(
+        tf.math.unsorted_segment_sum(data=data, segment_ids=indices, num_segments=num_segments),
+        shape=(B, -1, D)
+    )
+    return agg
