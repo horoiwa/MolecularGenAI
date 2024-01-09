@@ -31,18 +31,18 @@ def train(resume: int = 0):
     dataset = load_dataset(filename="qm9.tfrecord")
     optimizer = tf.keras.optimizers.AdamW(learning_rate=1e-4, weight_decay=1e-12)
 
+    logdir = Path(__file__).parent / "log"
+    savedir = Path(__file__).parent / "checkpoints"
     if resume == 0:
-        logdir = Path(__file__).parent / "log"
+        print("Initilization")
         if logdir.exists():
             shutil.rmtree(logdir)
-        summary_writer = tf.summary.create_file_writer(str(logdir))
-
-        savedir = Path(__file__).parent / "checkpoints"
         if savedir.exists():
             shutil.rmtree(savedir)
     else:
         model.load_weights(f"checkpoints/edm_{resume}")
 
+    summary_writer = tf.summary.create_file_writer(str(logdir))
     now = time.time()
     start = 1 if resume == 0 else resume + 1
     for i, (atom_coords, atom_types, edge_indices, node_masks, edge_masks) in enumerate(dataset, start=start):
@@ -53,7 +53,7 @@ def train(resume: int = 0):
 
         variables = model.trainable_variables
         grads = tape.gradient(loss, variables)
-        grads, norm = tf.clip_by_global_norm(grads, 40.0)
+        grads, norm = tf.clip_by_global_norm(grads, 100.0)
         optimizer.apply_gradients(zip(grads, variables))
 
         if i % 100 == 0:
@@ -79,5 +79,5 @@ def test():
 
 
 if __name__ == '__main__':
-    train(resume=0)
+    train(resume=120_000)
     #test()
