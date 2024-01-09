@@ -9,7 +9,7 @@ from src.models import EquivariantDiffusionModel
 
 
 DATASET_DIR = Path("./data")
-BATCH_SIZE = 48
+BATCH_SIZE = 64
 
 
 def load_dataset(filename: str):

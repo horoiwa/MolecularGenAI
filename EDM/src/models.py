@@ -13,7 +13,7 @@ def align_with_center_of_gravity(x, node_masks):
         tf.reduce_sum(x, axis=1, keepdims=True) / n_atoms
     )
     x_centered = (x - x_mean) * node_masks
-    #assert tf.reduce_mean(tf.reduce_sum(x_centered, axis=1)) < 1e-4
+    #assert tf.reduce_mean(tf.reduce_sum(x_centered, axis=1)) < 1e-5
     return x_centered
 
 
@@ -93,25 +93,25 @@ class EquivariantDiffusionModel(tf.keras.Model):
     def call(self, x_in, h_in, t, edge_indices, node_mask, edge_mask):
         """ predict noise ε_t
         """
-        d_ij = compute_distance(x_in, edge_indices) * edge_mask
+        d_ij_in = compute_distance(x_in, edge_indices) * edge_mask
         x, h = x_in, tf.concat([h_in, t], axis=-1)
         h = self.dense_in(h)
         for egnn_block in self.egnn_blocks:
             x, h = egnn_block(
-                x=x, h=h, edge_attr=d_ij, edge_indices=edge_indices,
+                x=x, h=h, edge_attr=d_ij_in, edge_indices=edge_indices,
                 node_mask=node_mask, edge_mask=edge_mask,
             )
         x_out = (x - x_in) * node_mask
         x_out = align_with_center_of_gravity(x_out, node_mask)
 
         h_out = self.dense_out(h) * node_mask
-        h_out = (h_out[..., :-1])
+        h_out = h_out[..., :-1]
 
         eps = tf.concat([x_out, h_out], axis=-1)
 
         return eps
 
-    @tf.function
+    #@tf.function
     def compute_loss(self, x, h, edge_indices, node_masks, edge_masks):
         """
         Notes:
@@ -148,17 +148,23 @@ class EquivariantDiffusionModel(tf.keras.Model):
 
         # 順拡散プロセス
         eps = sample_gaussian_noise(shape_x=x_0.shape, shape_h=h_0.shape, node_masks=node_masks)
-        z_t = tf.sqrt(alphas_cumprod_t) * z_0 + tf.sqrt(1. - alphas_cumprod_t) * eps
+        z_t = tf.sqrt(alphas_cumprod_t) * z_0 + tf.sqrt(1.0 - alphas_cumprod_t) * eps
         x_t, h_t = z_t[..., :3], z_t[..., 3:]
 
         # E3同変GNNによるノイズ予測とL2ロス算出
         eps_pred = self(x_t, h_t, t, edge_indices, node_masks, edge_masks)
+
         loss_all = 0.5 * (eps - eps_pred) **2
-        loss = tf.reduce_mean(
-            tf.reduce_mean(
-                tf.reduce_mean(loss_all, axis=1), axis=-1
-            ), axis=-1
-        )
+        loss = tf.reduce_mean(loss_all)
+
+        if debug := True:
+            x_0_pred = (1.0 / tf.sqrt(alphas_cumprod_t)) * x_t - (tf.sqrt((1.0 - alphas_cumprod_t) / alphas_cumprod_t)) * eps_pred[..., :3]
+            h_0_pred = (1.0 / tf.sqrt(alphas_cumprod_t)) * h_t - (tf.sqrt((1.0 - alphas_cumprod_t) / alphas_cumprod_t)) * eps_pred[..., 3:]
+            loss_x_all = 0.5 * (eps[..., :3] - eps_pred[..., :3]) **2
+            loss_h_all = 0.5 * (eps[..., 3:] - eps_pred[..., 3:]) **2
+            loss_x = tf.reduce_mean(loss_x_all)
+            loss_h = tf.reduce_mean(loss_h_all)
+
         return loss
 
     def sample_molecule(self, x):
@@ -186,7 +192,7 @@ class EquivariantGNNBlock(tf.keras.Model):
         self.dense_x = tf.keras.Sequential([
             kl.Dense(256, activation=tf.nn.silu, kernel_initializer='truncated_normal'),
             kl.Dense(256, activation=tf.nn.silu, kernel_initializer='truncated_normal'),
-            kl.Dense(1, activation="tanh", use_bias=False, kernel_initializer='truncated_normal'),
+            kl.Dense(1, activation="tanh", use_bias=False, kernel_initializer='glorot_uniform'),
         ])
         self.scale_factor = 15.0
 
@@ -198,7 +204,7 @@ class EquivariantGNNBlock(tf.keras.Model):
         x_j = tf.gather_nd(x, indices_j, batch_dims=1)
 
         diff_ij = (x_i - x_j) * edge_mask
-        d_ij= tf.sqrt(tf.reduce_sum(diff_ij**2, axis=-1, keepdims=True))
+        d_ij = tf.sqrt(tf.reduce_sum(diff_ij**2, axis=-1, keepdims=True))
 
         h_i = tf.gather_nd(h, indices_i, batch_dims=1)
         h_j = tf.gather_nd(h, indices_j, batch_dims=1)
@@ -212,19 +218,19 @@ class EquivariantGNNBlock(tf.keras.Model):
         m_ij = self.dense_e(feat)
         e_ij = self.e_attention(m_ij)
         em_ij = e_ij * m_ij
-        em_agg = segemnt_sum_by_node(em_ij, indices_i)
+        em_agg = segmnt_sum_by_node(em_ij, indices_i)
         h_out = h_in + self.dense_h(tf.concat([h_in, em_agg], axis=-1))
         return h_out
 
     def update_x(self, x_in, diff_ij, d_ij, feat, indices_i):
         # tanhでのアクティベーション後にリスケール
         x = diff_ij / (d_ij + 1.0) * self.dense_x(feat) * self.scale_factor  # (B, N*N, 3) * (B, N*N, 1) -> (B, N*N, 3)
-        x_agg = segemnt_sum_by_node(x, indices_i)
+        x_agg = segmnt_sum_by_node(x, indices_i)
         x_out = x_in + x_agg
         return x_out
 
 
-def segemnt_sum_by_node(data, indices_i):
+def segmnt_sum_by_node(data, indices_i):
     """
     やりたいことは単なるdata.groupby(indices_i).sum()だが、
     tf.math.unsorted_segment_sumの仕様上、迂遠な処理が必要
