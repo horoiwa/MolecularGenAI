@@ -36,6 +36,9 @@ def create_tfrecord(dataset_dir: Path, filename: str):
         if n_atoms > settings.MAX_NUM_ATOMS:
             print(f"SKIP {n}: NUM ATOMS {n_atoms} > {settings.MAX_NUM_ATOMS}")
             continue
+        if n_atoms < 3:
+            print(f"SKIP {n}: NUM ATOMS {n_atoms} < 3")
+            continue
 
         mask = [[1.] if i < n_atoms else [0.] for i in range(settings.MAX_NUM_ATOMS)]
         mask = tf.convert_to_tensor(mask, dtype=tf.float32)

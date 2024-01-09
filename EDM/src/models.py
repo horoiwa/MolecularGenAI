@@ -111,7 +111,7 @@ class EquivariantDiffusionModel(tf.keras.Model):
 
         return eps
 
-    #@tf.function
+    @tf.function
     def compute_loss(self, x, h, edge_indices, node_masks, edge_masks):
         """
         Notes:
@@ -194,7 +194,7 @@ class EquivariantGNNBlock(tf.keras.Model):
             kl.Dense(256, activation=tf.nn.silu, kernel_initializer='truncated_normal'),
             kl.Dense(1, activation="tanh", use_bias=False, kernel_initializer='glorot_uniform'),
         ])
-        self.scale_factor = 15.0
+        self.scale_factor = 10.0
 
 
     def call(self, x, h, edge_attr, edge_indices, node_mask, edge_mask):
