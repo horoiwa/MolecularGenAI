@@ -54,7 +54,7 @@ def train(resume: int = 0):
             loss_x = tf.reduce_mean(loss_x)
             loss_h = tf.reduce_mean(loss_h)
 
-        loss = loss_xh
+        loss = loss_x
         variables = model.trainable_variables
         grads = tape.gradient(loss, variables)
         grads, norm = tf.clip_by_global_norm(grads, 100.0)
@@ -85,5 +85,5 @@ def test():
 
 
 if __name__ == '__main__':
-    train(resume=120_000)
+    train(resume=0)
     #test()

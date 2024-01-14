@@ -111,7 +111,7 @@ class EquivariantDiffusionModel(tf.keras.Model):
 
         return eps
 
-    #@tf.function
+    @tf.function
     def compute_loss(self, x, h, edge_indices, node_masks, edge_masks):
         """
         Notes:
@@ -158,7 +158,6 @@ class EquivariantDiffusionModel(tf.keras.Model):
 
         loss_z = 0.5 * (eps - eps_pred) **2
         loss_x, loss_h = loss_z[..., :3], loss_z[..., 3:]
-        import pdb; pdb.set_trace()
         # if debug := True:
         #     eps_x, eps_h = eps[..., :3], eps[..., 3:]
         #     z_0_x, z_0_h = z_0[..., :3], z_0[..., 3:]
