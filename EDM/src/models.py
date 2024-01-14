@@ -101,8 +101,8 @@ class EquivariantDiffusionModel(tf.keras.Model):
                 x=x, h=h, edge_attr=d_ij_in, edge_indices=edge_indices,
                 node_mask=node_mask, edge_mask=edge_mask,
             )
-        x = (x - x_in) * node_mask
-        x_out = remove_mean(x, node_mask)
+        _x_out = (x - x_in) * node_mask
+        x_out = remove_mean(_x_out, node_mask)
 
         h_out = self.dense_out(h) * node_mask
         h_out = h_out[..., :-1]
@@ -134,8 +134,7 @@ class EquivariantDiffusionModel(tf.keras.Model):
         # 拡散タイムステップの決定: 0 <= t <= T
         timesteps = tf.random.uniform(
             shape=(x_0.shape[0], 1),
-            #minval=0,
-            minval=self.num_steps,
+            minval=0,
             maxval=self.num_steps+1,
             dtype=tf.int32
         )
@@ -198,7 +197,7 @@ class EquivariantGNNBlock(tf.keras.Model):
         self.dense_x = tf.keras.Sequential([
             kl.Dense(256, activation=tf.nn.silu, kernel_initializer='truncated_normal'),
             kl.Dense(256, activation=tf.nn.silu, kernel_initializer='truncated_normal'),
-            kl.Dense(1, activation="tanh", use_bias=False, kernel_initializer='glorot_uniform'),
+            kl.Dense(1, activation=None, use_bias=False, kernel_initializer='truncated_normal'),
         ])
         self.scale_factor = 10.0
 
@@ -229,8 +228,10 @@ class EquivariantGNNBlock(tf.keras.Model):
         return h_out
 
     def update_x(self, x_in, diff_ij, d_ij, feat, indices_i):
+        x = self.dense_x(feat)
         # tanhでのアクティベーション後にリスケール
-        x = diff_ij / (d_ij + 1.0) * self.dense_x(feat) * self.scale_factor  # (B, N*N, 3) * (B, N*N, 1) -> (B, N*N, 3)
+        #x = tf.math.tanh(x) * self.scale_factor
+        x = (diff_ij / (d_ij + 1.0)) * x  # (B, N*N, 3) * (B, N*N, 1) -> (B, N*N, 3)
         x_agg = segmnt_sum_by_node(x, indices_i)
         x_out = x_in + x_agg
         return x_out
