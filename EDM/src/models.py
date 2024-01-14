@@ -157,6 +157,7 @@ class EquivariantDiffusionModel(tf.keras.Model):
 
         loss_z = 0.5 * (eps - eps_pred) **2
         loss_x, loss_h = loss_z[..., :3], loss_z[..., 3:]
+
         # if debug := True:
         #     eps_x, eps_h = eps[..., :3], eps[..., 3:]
         #     z_0_x, z_0_h = z_0[..., :3], z_0[..., 3:]
@@ -164,7 +165,6 @@ class EquivariantDiffusionModel(tf.keras.Model):
         #     eps_x_p, eps_h_p = eps_pred[..., :3], eps_pred[..., 3:]
         #     x_0_p = (1.0 / tf.sqrt(alphas_cumprod_t)) * x_t - (tf.sqrt((1.0 - alphas_cumprod_t) / alphas_cumprod_t)) * eps_pred[..., :3]
         #     h_0_p = (1.0 / tf.sqrt(alphas_cumprod_t)) * h_t - (tf.sqrt((1.0 - alphas_cumprod_t) / alphas_cumprod_t)) * eps_pred[..., 3:]
-        #     import pdb; pdb.set_trace()
         #     loss_x_all = 0.5 * (eps[..., :3] - eps_pred[..., :3]) **2
         #     loss_h_all = 0.5 * (eps[..., 3:] - eps_pred[..., 3:]) **2
         #     loss_x = tf.reduce_mean(loss_x_all)
@@ -229,7 +229,6 @@ class EquivariantGNNBlock(tf.keras.Model):
 
     def update_x(self, x_in, diff_ij, d_ij, feat, indices_i):
         x = self.dense_x(feat)
-        # tanhでのアクティベーション後にリスケール
         #x = tf.math.tanh(x) * self.scale_factor
         x = (diff_ij / (d_ij + 1.0)) * x  # (B, N*N, 3) * (B, N*N, 1) -> (B, N*N, 3)
         x_agg = segmnt_sum_by_node(x, indices_i)
