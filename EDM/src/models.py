@@ -7,7 +7,7 @@ import tensorflow.keras.layers as kl
 from src import settings
 
 
-def align_with_center_of_gravity(x, node_masks):
+def remove_mean(x, node_masks):
     n_atoms = tf.reduce_sum(node_masks, axis=1, keepdims=True)       #(B, 1, 1)
     x_mean = (
         tf.reduce_sum(x, axis=1, keepdims=True) / n_atoms
@@ -49,7 +49,7 @@ def get_cosine_noise_schedule(T: int, s=0.008):
 
 def sample_gaussian_noise(shape_x, shape_h, node_masks):
     # ガウスノイズをサンプリング後、重心ゼロとなるよう並進移動
-    eps_x = align_with_center_of_gravity(
+    eps_x = remove_mean(
         tf.random.normal(shape=shape_x, mean=0., stddev=1.) * node_masks,
         node_masks,
     )
@@ -102,7 +102,7 @@ class EquivariantDiffusionModel(tf.keras.Model):
                 node_mask=node_mask, edge_mask=edge_mask,
             )
         x = (x - x_in) * node_mask
-        x_out = align_with_center_of_gravity(x, node_mask)
+        x_out = remove_mean(x, node_mask)
 
         h_out = self.dense_out(h) * node_mask
         h_out = h_out[..., :-1]
@@ -127,7 +127,7 @@ class EquivariantDiffusionModel(tf.keras.Model):
 
         # 重心が(0,0,0)となるように平行移動し、スケーリング
         B, N = x.shape[0], x.shape[1]
-        x_0 = align_with_center_of_gravity(x, node_masks) / self.scale_x
+        x_0 = remove_mean(x, node_masks) / self.scale_x
         h_0 = h / self.scale_h
         z_0 = tf.concat([x_0, h_0], axis=-1)  # (B, N, 3+4)
 

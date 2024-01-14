@@ -85,5 +85,5 @@ def test():
 
 
 if __name__ == '__main__':
-    train(resume=20_000)
+    train(resume=0)
     #test()
