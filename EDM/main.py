@@ -47,10 +47,14 @@ def train(resume: int = 0):
     start = 1 if resume == 0 else resume + 1
     for i, (atom_coords, atom_types, edge_indices, node_masks, edge_masks) in enumerate(dataset, start=start):
         with tf.GradientTape() as tape:
-            loss = model.compute_loss(
+            loss_xh, loss_x, loss_h = model.compute_loss(
                 atom_coords, atom_types, edge_indices, node_masks, edge_masks
             )
+            loss_xh = tf.reduce_mean(loss_xh)
+            loss_x = tf.reduce_mean(loss_x)
+            loss_h = tf.reduce_mean(loss_h)
 
+        loss = loss_xh
         variables = model.trainable_variables
         grads = tape.gradient(loss, variables)
         grads, norm = tf.clip_by_global_norm(grads, 100.0)
@@ -63,7 +67,9 @@ def train(resume: int = 0):
             tf.print(i, loss.numpy(), norm.numpy())
             tf.print(f"{elapsed:.1f}sec")
             with summary_writer.as_default():
-                tf.summary.scalar("loss", loss, step=i)
+                tf.summary.scalar("loss", loss_xh, step=i)
+                tf.summary.scalar("loss_x", loss_x, step=i)
+                tf.summary.scalar("loss_h", loss_h, step=i)
                 tf.summary.scalar("global_norm", norm, step=i)
 
         if i % 10_000 == 0:
@@ -79,5 +85,5 @@ def test():
 
 
 if __name__ == '__main__':
-    train(resume=0)
+    train(resume=120_000)
     #test()

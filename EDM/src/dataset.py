@@ -26,7 +26,7 @@ def create_tfrecord(dataset_dir: Path, filename: str):
     coords_all, atoms_all, masks_all, edges_all, edge_masks_all = [], [], [], [], []
 
     sdf_path = dataset_dir / "gdb9.sdf"
-    sdf_supplier = Chem.SDMolSupplier(str(sdf_path), removeHs=False)
+    sdf_supplier = Chem.SDMolSupplier(str(sdf_path), removeHs=settings.REMOVE_H)
     for n, mol in enumerate(sdf_supplier):
         if mol is None:
             print(f"SKIP {n}: None")
@@ -36,7 +36,7 @@ def create_tfrecord(dataset_dir: Path, filename: str):
         if n_atoms > settings.MAX_NUM_ATOMS:
             print(f"SKIP {n}: NUM ATOMS {n_atoms} > {settings.MAX_NUM_ATOMS}")
             continue
-        if n_atoms < 3:
+        if n_atoms < settings.MIN_NUM_ATOMS:
             print(f"SKIP {n}: NUM ATOMS {n_atoms} < 3")
             continue
 

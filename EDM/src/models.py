@@ -101,8 +101,8 @@ class EquivariantDiffusionModel(tf.keras.Model):
                 x=x, h=h, edge_attr=d_ij_in, edge_indices=edge_indices,
                 node_mask=node_mask, edge_mask=edge_mask,
             )
-        x_out = (x - x_in) * node_mask
-        x_out = align_with_center_of_gravity(x_out, node_mask)
+        x = (x - x_in) * node_mask
+        x_out = align_with_center_of_gravity(x, node_mask)
 
         h_out = self.dense_out(h) * node_mask
         h_out = h_out[..., :-1]
@@ -111,7 +111,7 @@ class EquivariantDiffusionModel(tf.keras.Model):
 
         return eps
 
-    @tf.function
+    #@tf.function
     def compute_loss(self, x, h, edge_indices, node_masks, edge_masks):
         """
         Notes:
@@ -133,7 +133,9 @@ class EquivariantDiffusionModel(tf.keras.Model):
 
         # 拡散タイムステップの決定: 0 <= t <= T
         timesteps = tf.random.uniform(
-            shape=(x_0.shape[0], 1), minval=0,
+            shape=(x_0.shape[0], 1),
+            #minval=0,
+            minval=self.num_steps,
             maxval=self.num_steps+1,
             dtype=tf.int32
         )
@@ -154,10 +156,15 @@ class EquivariantDiffusionModel(tf.keras.Model):
         # E3同変GNNによるノイズ予測とL2ロス算出
         eps_pred = self(x_t, h_t, t, edge_indices, node_masks, edge_masks)
 
-        loss_all = 0.5 * (eps - eps_pred) **2
-        loss = tf.reduce_mean(loss_all)
-
+        loss_z = 0.5 * (eps - eps_pred) **2
+        loss_x, loss_h = loss_z[..., :3], loss_z[..., 3:]
+        import pdb; pdb.set_trace()
         # if debug := True:
+        #     eps_x, eps_h = eps[..., :3], eps[..., 3:]
+        #     z_0_x, z_0_h = z_0[..., :3], z_0[..., 3:]
+        #     z_t_x, z_t_h = z_t[..., :3], z_t[..., 3:]
+        #     eps_x_p, eps_h_p = eps_pred[..., :3], eps_pred[..., 3:]
+        #     import pdb; pdb.set_trace()
         #     x_0_pred = (1.0 / tf.sqrt(alphas_cumprod_t)) * x_t - (tf.sqrt((1.0 - alphas_cumprod_t) / alphas_cumprod_t)) * eps_pred[..., :3]
         #     h_0_pred = (1.0 / tf.sqrt(alphas_cumprod_t)) * h_t - (tf.sqrt((1.0 - alphas_cumprod_t) / alphas_cumprod_t)) * eps_pred[..., 3:]
         #     loss_x_all = 0.5 * (eps[..., :3] - eps_pred[..., :3]) **2
@@ -165,7 +172,7 @@ class EquivariantDiffusionModel(tf.keras.Model):
         #     loss_x = tf.reduce_mean(loss_x_all)
         #     loss_h = tf.reduce_mean(loss_h_all)
 
-        return loss
+        return loss_z, loss_x, loss_h
 
     def sample_molecule(self, x):
         pass
