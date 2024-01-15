@@ -168,8 +168,8 @@ def create_dataset_from_tfrecord(tfrecord_path: str, batch_size: int):
         )
         .shuffle(2048, reshuffle_each_iteration=True)
         .repeat()
-        .map(deserialize, num_parallel_calls=tf.data.AUTOTUNE)
+        .map(deserialize, num_parallel_calls=2)
         .batch(batch_size)
-        .prefetch(tf.data.AUTOTUNE)
+        .prefetch(64*4)
     )
     return dataset
