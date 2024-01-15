@@ -4,7 +4,7 @@ import numpy as np
 import tensorflow as tf
 import tensorflow.keras.layers as kl
 
-from src import settings
+from src import settings, dataset
 
 
 def remove_mean(x, node_masks):
@@ -17,8 +17,8 @@ def remove_mean(x, node_masks):
     return x_centered
 
 
-def get_polynomial_noise_schedule(num_steps: int, s=1e-5):
-    T = num_steps + 1
+def get_polynomial_noise_schedule(T: int, s=1e-5):
+    T = T + 1
     t = tf.cast(tf.linspace(0, T, T), tf.float32)
 
     alphas_cumprod = (1.0 - (t/(T)) ** 2) ** 2
@@ -34,17 +34,6 @@ def get_polynomial_noise_schedule(num_steps: int, s=1e-5):
     alphas_cumprod = (1 - 2 * s) * tf.math.cumprod(alphas) + s
 
     return alphas_cumprod, alphas, betas
-
-
-def get_cosine_noise_schedule(T: int, s=0.008):
-    """cosine_schedule"""
-    t = tf.cast(tf.range(0, T+1), tf.float32)
-    _alphas_cumprod = tf.cos(0.5 * np.pi * ((t / T) + s ) / (1 + s))**2
-    alphas_cumprod = _alphas_cumprod / _alphas_cumprod[0]
-    _betas = 1. - (alphas_cumprod[1:] / alphas_cumprod[:-1])
-    betas = tf.clip_by_value(_betas, clip_value_min=0., clip_value_max=0.999)
-    alphas = 1. - betas
-    return alphas, betas
 
 
 def sample_gaussian_noise(shape_x, shape_h, node_masks):
@@ -71,11 +60,11 @@ class EquivariantDiffusionModel(tf.keras.Model):
     def __init__(self, n_layers: int = 9):
         super(EquivariantDiffusionModel, self).__init__()
 
-        self.num_steps = 1000
+        self.T = 1000
         self.scale_x, self.scale_h = 1.0, 4.0
         self.n_layers = n_layers
 
-        self.alphas_cumprod, self.alphas, self.betas = get_polynomial_noise_schedule(self.num_steps)
+        self.alphas_cumprod, self.alphas, self.betas = get_polynomial_noise_schedule(self.T)
         self.alphas_cumprod_prev = tf.concat([[1.], self.alphas_cumprod[:-1]], axis=0)
 
         self.dense_in = kl.Dense(256, activation=None, kernel_initializer='truncated_normal')
@@ -111,7 +100,7 @@ class EquivariantDiffusionModel(tf.keras.Model):
 
         return eps
 
-    #@tf.function
+    @tf.function
     def compute_loss(self, x, h, edge_indices, node_masks, edge_masks):
         """
         Notes:
@@ -135,11 +124,11 @@ class EquivariantDiffusionModel(tf.keras.Model):
         timesteps = tf.random.uniform(
             shape=(x_0.shape[0], 1),
             minval=0,
-            maxval=self.num_steps+1,
+            maxval=self.T+1,
             dtype=tf.int32
         )
         t = tf.reshape(
-            tf.repeat(tf.cast(timesteps / self.num_steps, tf.float32), repeats=N, axis=1),
+            tf.repeat(tf.cast(timesteps / self.T, tf.float32), repeats=N, axis=1),
             shape=(B, N, 1)
         ) * node_masks
         alphas_cumprod_t = tf.reshape(
@@ -169,11 +158,51 @@ class EquivariantDiffusionModel(tf.keras.Model):
 
         return loss_z, loss_x, loss_h
 
-    def sample_molecule(self, x):
-        pass
+    def sample(self, n_atoms: int, batch_size: int = 4):
 
-    def inv_diffusion(self, x_t, timesteps):
-        pass
+        B, N, D = batch_size, settings.MAX_NUM_ATOMS, settings.N_ATOM_TYPES
+        node_masks = tf.convert_to_tensor(
+            [[[1.] if i < n_atoms else [0.] for i in range(N)]],
+            dtype=tf.float32
+        )
+        _edges, _edge_masks = dataset.get_edges(n_atoms=n_atoms)
+        edges, edge_masks = tf.expand_dims(_edges, axis=0), tf.expand_dims(_edge_masks, axis=0)
+        z_t = sample_gaussian_noise(
+            shape_x=(batch_size, N, 3),
+            shape_h=(batch_size, N, D),
+            node_masks=node_masks
+        )
+        for timestep in reversed(range(0, self.T)):
+            z_t = self.inv_diffusion(z_t, edges, node_masks, edge_masks, timestep)
+
+        z_0 = None
+        return z_0
+
+    def inv_diffusion(self, z_t, edges, node_masks, edge_masks, timestep: int):
+
+        B, N, D =  z_t.shape
+        timesteps = timestep * tf.ones(shape=(B, 1), dtype=tf.int32)
+        t = tf.reshape(
+            tf.repeat(tf.cast(timesteps / self.T, tf.float32), repeats=N, axis=1),
+            shape=(B, N, 1)
+        ) * node_masks
+        import pdb; pdb.set_trace()
+
+
+
+        beta_t = tf.reshape(tf.gather(self.betas, indices=t), (-1, 1))  # (1, B, 1) -> (B, 1)
+        alphas_cumprod_t = tf.reshape(tf.gather(self.alphas_cumprod, indices=t), (-1, 1))  # (1, B, 1) -> (B, 1)
+
+        eps_t = self(x_t, t, states)
+        mu = (1.0 / tf.sqrt(1.0 - beta_t)) * (x_t - (beta_t / tf.sqrt(1.0 - alphas_cumprod_t)) * eps_t)
+        sigma = tf.sqrt(tf.reshape(tf.gather(self.variance, indices=t), (-1, 1)))
+        noise = tf.random.normal(shape=x_t.shape, mean=0., stddev=1.)
+
+        x_t_minus_1 = mu + sigma * noise
+
+        z_s = None
+
+        return z_s
 
 
 

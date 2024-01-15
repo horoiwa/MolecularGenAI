@@ -25,7 +25,7 @@ def load_dataset(filename: str):
     return dataset
 
 
-def train(resume: int = 0):
+def train(checkpoint: int = 0):
 
     model = EquivariantDiffusionModel()
     dataset = load_dataset(filename="qm9.tfrecord")
@@ -33,18 +33,18 @@ def train(resume: int = 0):
 
     logdir = Path(__file__).parent / "log"
     savedir = Path(__file__).parent / "checkpoints"
-    if resume == 0:
+    if checkpoint == 0:
         print("Initilization")
         if logdir.exists():
             shutil.rmtree(logdir)
         if savedir.exists():
             shutil.rmtree(savedir)
     else:
-        model.load_weights(f"checkpoints/edm_{resume}")
+        model.load_weights(f"checkpoints/edm_{checkpoint}")
 
     summary_writer = tf.summary.create_file_writer(str(logdir))
     now = time.time()
-    start = 1 if resume == 0 else resume + 1
+    start = 1 if checkpoint == 0 else checkpoint + 1
     for i, (atom_coords, atom_types, edge_indices, node_masks, edge_masks) in enumerate(dataset, start=start):
         with tf.GradientTape() as tape:
             loss_xh, loss_x, loss_h = model.compute_loss(
@@ -80,11 +80,13 @@ def train(resume: int = 0):
             break
 
 
-def test():
-    pass
+def test(checkpoint: int):
+    model = EquivariantDiffusionModel()
+    model.load_weights(f"checkpoints/edm_{checkpoint}")
+    mol = model.sample(n_atoms=7)
 
 
 if __name__ == '__main__':
     #train(resume=0)
-    train(resume=280_000)
-    #test()
+    #train(checkpoint=280_000)
+    test(checkpoint=280_000)
