@@ -131,6 +131,7 @@ class EquivariantDiffusionModel(tf.keras.Model):
             tf.repeat(tf.cast(timesteps / self.T, tf.float32), repeats=N, axis=1),
             shape=(B, N, 1)
         ) * node_masks
+
         alphas_cumprod_t = tf.reshape(
             tf.gather(self.alphas_cumprod, indices=timesteps),
             shape=(-1, 1, 1)
@@ -158,52 +159,69 @@ class EquivariantDiffusionModel(tf.keras.Model):
 
         return loss_z, loss_x, loss_h
 
-    def sample(self, n_atoms: int, batch_size: int = 4):
+    def sample(self, n_atoms: int, batch_size: int = 2):
 
         B, N, D = batch_size, settings.MAX_NUM_ATOMS, settings.N_ATOM_TYPES
         node_masks = tf.convert_to_tensor(
             [[[1.] if i < n_atoms else [0.] for i in range(N)]],
             dtype=tf.float32
         )
-        _edges, _edge_masks = dataset.get_edges(n_atoms=n_atoms)
-        edges, edge_masks = tf.expand_dims(_edges, axis=0), tf.expand_dims(_edge_masks, axis=0)
+        _edge_indices, _edge_masks = dataset.get_edges(n_atoms=n_atoms)
+        edge_indices = tf.repeat(tf.expand_dims(_edge_indices, axis=0), repeats=B, axis=0)
+        edge_masks = tf.repeat(tf.expand_dims(_edge_masks, axis=0), repeats=B, axis=0)
         z_t = sample_gaussian_noise(
-            shape_x=(batch_size, N, 3),
-            shape_h=(batch_size, N, D),
+            shape_x=(B, N, 3),
+            shape_h=(B, N, D),
             node_masks=node_masks
         )
-        for timestep in reversed(range(0, self.T)):
-            z_t = self.inv_diffusion(z_t, edges, node_masks, edge_masks, timestep)
 
+        for timestep in reversed(range(1, self.T+1)):
+            x_t, h_t = z_t[..., :3], z_t[..., 3:]
+            x_s, h_s = self.inv_diffusion(x_t, h_t, edge_indices, node_masks, edge_masks, timestep)
+            z_s = tf.concat([x_s, h_s], axis=-1)
+            z_t = z_s
+
+        import pdb; pdb.set_trace()
         z_0 = None
         return z_0
 
-    def inv_diffusion(self, z_t, edges, node_masks, edge_masks, timestep: int):
+    def inv_diffusion(self, x_t, h_t, edge_indices, node_masks, edge_masks, timestep: int):
 
-        B, N, D =  z_t.shape
+        B, N, _ =  x_t.shape
+
         timesteps = timestep * tf.ones(shape=(B, 1), dtype=tf.int32)
+        alphas_cumprod_t = tf.reshape(
+            tf.gather(self.alphas_cumprod, indices=timesteps),
+            shape=(-1, 1, 1)
+        )
+        alphas_cumprod_s = tf.reshape(
+            tf.gather(self.alphas_cumprod_prev, indices=timesteps),
+            shape=(-1, 1, 1)
+        )
+        beta_t= tf.reshape(
+            tf.gather(self.betas, indices=timesteps),
+            shape=(-1, 1, 1)
+        )
+
         t = tf.reshape(
             tf.repeat(tf.cast(timesteps / self.T, tf.float32), repeats=N, axis=1),
             shape=(B, N, 1)
         ) * node_masks
+
+        eps = self(x_t, h_t, t, edge_indices, node_masks, edge_masks)
+        eps_x, eps_h = eps[..., :3], eps[..., 3:]
+
+        mu_x = (1.0 / tf.sqrt(1.0 - beta_t)) * (eps_x - (beta_t / tf.sqrt(1.0 - alphas_cumprod_t)) * eps_x)
+        mu_h = (1.0 / tf.sqrt(1.0 - beta_t)) * (eps_h - (beta_t / tf.sqrt(1.0 - alphas_cumprod_t)) * eps_h)
+
+        variance = beta_t * (1.0 - alphas_cumprod_s) / (1.0 - alphas_cumprod_t)
+        sigma = tf.reshape(tf.sqrt(variance), shape=(-1, 1))
+        gauss_noise = tf.random.normal(shape=x_t.shape, mean=0., stddev=1.)
         import pdb; pdb.set_trace()
+        x_s = mu_x + sigma * gauss_noise
+        h_s = mu_h + sigma * gauss_noise
 
-
-
-        beta_t = tf.reshape(tf.gather(self.betas, indices=t), (-1, 1))  # (1, B, 1) -> (B, 1)
-        alphas_cumprod_t = tf.reshape(tf.gather(self.alphas_cumprod, indices=t), (-1, 1))  # (1, B, 1) -> (B, 1)
-
-        eps_t = self(x_t, t, states)
-        mu = (1.0 / tf.sqrt(1.0 - beta_t)) * (x_t - (beta_t / tf.sqrt(1.0 - alphas_cumprod_t)) * eps_t)
-        sigma = tf.sqrt(tf.reshape(tf.gather(self.variance, indices=t), (-1, 1)))
-        noise = tf.random.normal(shape=x_t.shape, mean=0., stddev=1.)
-
-        x_t_minus_1 = mu + sigma * noise
-
-        z_s = None
-
-        return z_s
-
+        return x_s, h_s
 
 
 class EquivariantGNNBlock(tf.keras.Model):
