@@ -187,7 +187,7 @@ class EquivariantDiffusionModel(tf.keras.Model):
 
     def inv_diffusion(self, x_t, h_t, edge_indices, node_masks, edge_masks, timestep: int):
 
-        B, N, _ =  x_t.shape
+        B, N, D =  h_t.shape
 
         timesteps = timestep * tf.ones(shape=(B, 1), dtype=tf.int32)
         alphas_cumprod_t = tf.reshape(
@@ -215,11 +215,16 @@ class EquivariantDiffusionModel(tf.keras.Model):
         mu_h = (1.0 / tf.sqrt(1.0 - beta_t)) * (eps_h - (beta_t / tf.sqrt(1.0 - alphas_cumprod_t)) * eps_h)
 
         variance = beta_t * (1.0 - alphas_cumprod_s) / (1.0 - alphas_cumprod_t)
-        sigma = tf.reshape(tf.sqrt(variance), shape=(-1, 1))
-        gauss_noise = tf.random.normal(shape=x_t.shape, mean=0., stddev=1.)
-        import pdb; pdb.set_trace()
-        x_s = mu_x + sigma * gauss_noise
-        h_s = mu_h + sigma * gauss_noise
+        sigma = tf.reshape(
+            tf.repeat(tf.sqrt(variance), repeats=N, axis=1),
+            shape=(B, N, 1)
+        ) * node_masks
+
+        noise_x = tf.random.normal(shape=x_t.shape, mean=0., stddev=1.)
+        x_s = mu_x + sigma * noise_x
+
+        noise_h = tf.random.normal(shape=h_t.shape, mean=0., stddev=1.)
+        h_s = mu_h + sigma * noise_h
 
         return x_s, h_s
 
