@@ -79,6 +79,7 @@ class EquivariantDiffusionModel(tf.keras.Model):
     def load(self, load_path: str):
         self.load_weights(load_path)
 
+    @tf.function
     def call(self, x_in, h_in, t, edge_indices, node_mask, edge_mask):
         """ predict noise ε_t
         """
@@ -100,7 +101,6 @@ class EquivariantDiffusionModel(tf.keras.Model):
 
         return eps
 
-    @tf.function
     def compute_loss(self, x, h, edge_indices, node_masks, edge_masks):
         """
         Notes:
@@ -148,18 +148,9 @@ class EquivariantDiffusionModel(tf.keras.Model):
         loss_z = 0.5 * (eps - eps_pred) **2
         loss_x, loss_h = loss_z[..., :3], loss_z[..., 3:]
 
-        # DEBUG
-        # eps_x, eps_h = eps[..., :3], eps[..., 3:]
-        # z_0_x, z_0_h = z_0[..., :3], z_0[..., 3:]
-        # z_t_x, z_t_h = z_t[..., :3], z_t[..., 3:]
-        # eps_x_p, eps_h_p = eps_pred[..., :3], eps_pred[..., 3:]
-        # x_0_p = (1.0 / tf.sqrt(alphas_cumprod_t)) * x_t - (tf.sqrt((1.0 - alphas_cumprod_t) / alphas_cumprod_t)) * eps_pred[..., :3]
-        # h_0_p = (1.0 / tf.sqrt(alphas_cumprod_t)) * h_t - (tf.sqrt((1.0 - alphas_cumprod_t) / alphas_cumprod_t)) * eps_pred[..., 3:]
-        # import pdb; pdb.set_trace()
-
         return loss_z, loss_x, loss_h
 
-    def sample(self, n_atoms: int, batch_size: int = 2):
+    def sample(self, n_atoms: int, z_t = None, batch_size: int = 2, record_path: Path = None):
 
         B, N, D = batch_size, settings.MAX_NUM_ATOMS, settings.N_ATOM_TYPES
         node_masks = tf.convert_to_tensor(
@@ -169,19 +160,23 @@ class EquivariantDiffusionModel(tf.keras.Model):
         _edge_indices, _edge_masks = dataset.get_edges(n_atoms=n_atoms)
         edge_indices = tf.repeat(tf.expand_dims(_edge_indices, axis=0), repeats=B, axis=0)
         edge_masks = tf.repeat(tf.expand_dims(_edge_masks, axis=0), repeats=B, axis=0)
-        z_t = sample_gaussian_noise(
-            shape_x=(B, N, 3),
-            shape_h=(B, N, D),
-            node_masks=node_masks
-        )
+
+        if z_t is None:
+            z_t = sample_gaussian_noise(
+                shape_x=(B, N, 3),
+                shape_h=(B, N, D),
+                node_masks=node_masks
+            )
 
         for timestep in reversed(range(1, self.T+1)):
             x_t, h_t = z_t[..., :3], z_t[..., 3:]
             x_s, h_s = self.inv_diffusion(x_t, h_t, edge_indices, node_masks, edge_masks, timestep)
             z_s = tf.concat([x_s, h_s], axis=-1)
             z_t = z_s
+            if timestep % 10 == 0:
+                print(timestep)
+                print(z_t[0])
 
-        import pdb; pdb.set_trace()
         z_0 = None
         return z_0
 
