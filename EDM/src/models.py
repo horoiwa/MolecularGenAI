@@ -150,7 +150,38 @@ class EquivariantDiffusionModel(tf.keras.Model):
 
         return loss_z, loss_x, loss_h
 
-    def sample(self, n_atoms: int, z_t = None, batch_size: int = 2, record_path: Path = None):
+    def _sample_tmp(self, x, h, edge_indices, node_masks, edge_masks):
+        # 重心が(0,0,0)となるように平行移動し、スケーリング
+        B, N = x.shape[0], x.shape[1]
+        x_0 = remove_mean(x, node_masks) / self.scale_x
+        h_0 = h / self.scale_h
+        z_0 = tf.concat([x_0, h_0], axis=-1)  # (B, N, 3+4)
+
+        # 拡散タイムステップの決定: 0 <= t <= T
+        timesteps = tf.random.uniform(
+            shape=(x_0.shape[0], 1),
+            minval=self.T,
+            maxval=self.T+1,
+            dtype=tf.int32
+        )
+        t = tf.reshape(
+            tf.repeat(tf.cast(timesteps / self.T, tf.float32), repeats=N, axis=1),
+            shape=(B, N, 1)
+        ) * node_masks
+
+        alphas_cumprod_t = tf.reshape(
+            tf.gather(self.alphas_cumprod, indices=timesteps),
+            shape=(-1, 1, 1)
+        )
+
+        eps = sample_gaussian_noise(shape_x=x_0.shape, shape_h=h_0.shape, node_masks=node_masks)
+        z_t = tf.sqrt(alphas_cumprod_t) * z_0 + tf.sqrt(1.0 - alphas_cumprod_t) * eps
+        n_atoms = int(tf.reduce_sum(node_masks).numpy())
+        mol = self.sample(n_atoms=n_atoms, z_t=z_t)
+        return mol
+
+
+    def sample(self, n_atoms: int, z_t = None, batch_size: int = 1, record_path: Path = None):
 
         B, N, D = batch_size, settings.MAX_NUM_ATOMS, settings.N_ATOM_TYPES
         node_masks = tf.convert_to_tensor(
@@ -169,7 +200,14 @@ class EquivariantDiffusionModel(tf.keras.Model):
             )
 
         for timestep in reversed(range(1, self.T+1)):
-            x_t, h_t = z_t[..., :3], z_t[..., 3:]
+            _x_t, h_t = z_t[..., :3], z_t[..., 3:]
+            x_t = remove_mean(_x_t, node_masks)
+            try:
+                assert tf.reduce_sum(tf.reduce_sum(x_t, axis=1)) < 1e-5
+            except:
+                print("Input")
+                import pdb; pdb.set_trace()
+
             x_s, h_s = self.inv_diffusion(x_t, h_t, edge_indices, node_masks, edge_masks, timestep)
             z_s = tf.concat([x_s, h_s], axis=-1)
             z_t = z_s
@@ -205,6 +243,16 @@ class EquivariantDiffusionModel(tf.keras.Model):
 
         eps = self(x_t, h_t, t, edge_indices, node_masks, edge_masks)
         eps_x, eps_h = eps[..., :3], eps[..., 3:]
+
+        check = tf.reduce_sum(tf.cast(tf.math.is_nan(eps_x), tf.int32))
+        if check > 0:
+            print("Nan Assertion")
+            import pdb; pdb.set_trace()
+        try:
+            assert tf.reduce_sum(tf.reduce_sum(eps_x, axis=1)) < 1e-5
+        except:
+            print("EPS Error")
+            import pdb; pdb.set_trace()
 
         mu_x = (1.0 / tf.sqrt(1.0 - beta_t)) * (eps_x - (beta_t / tf.sqrt(1.0 - alphas_cumprod_t)) * eps_x)
         mu_h = (1.0 / tf.sqrt(1.0 - beta_t)) * (eps_h - (beta_t / tf.sqrt(1.0 - alphas_cumprod_t)) * eps_h)

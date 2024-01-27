@@ -12,7 +12,7 @@ DATASET_DIR = Path("./data")
 BATCH_SIZE = 64
 
 
-def load_dataset(filename: str):
+def load_dataset(filename: str, batch_size: int = BATCH_SIZE):
     if not (DATASET_DIR / "gdb9.sdf").exists():
         download_qm9(dataset_dir=DATASET_DIR)
 
@@ -20,7 +20,7 @@ def load_dataset(filename: str):
         create_tfrecord(dataset_dir=DATASET_DIR, filename=filename)
 
     dataset = create_dataset_from_tfrecord(
-        tfrecord_path=str(DATASET_DIR/filename), batch_size=BATCH_SIZE
+        tfrecord_path=str(DATASET_DIR/filename), batch_size=batch_size
     )
     return dataset
 
@@ -83,10 +83,19 @@ def train(checkpoint: int = 0):
 def test(checkpoint: int):
     model = EquivariantDiffusionModel()
     model.load_weights(f"checkpoints/edm_{checkpoint}")
-    mol = model.sample(n_atoms=7)
+    dataset = load_dataset(filename="qm9.tfrecord", batch_size=1)
+    for i, (atom_coords, atom_types, edge_indices, node_masks, edge_masks) in enumerate(dataset):
+        print()
+        print(atom_coords)
+        print(atom_types)
+        print()
+        mol = model._sample_tmp(
+            atom_coords, atom_types, edge_indices, node_masks, edge_masks
+        )
+        #mol = model.sample(n_atoms=7)
 
 
 if __name__ == '__main__':
     #train(resume=0)
-    #train(checkpoint=280_000)
-    test(checkpoint=280_000)
+    #train(checkpoint=410_000)
+    test(checkpoint=410_000)
