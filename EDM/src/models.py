@@ -61,7 +61,7 @@ class EquivariantDiffusionModel(tf.keras.Model):
         super(EquivariantDiffusionModel, self).__init__()
 
         self.T = 1000
-        self.scale_x, self.scale_h = 1.0, 4.0
+        self.scale_x, self.scale_h = 5.0, 4.0
         self.n_layers = n_layers
 
         self.alphas_cumprod, self.alphas, self.betas = get_polynomial_noise_schedule(self.T)
@@ -210,10 +210,14 @@ class EquivariantDiffusionModel(tf.keras.Model):
 
             x_s, h_s = self.inv_diffusion(x_t, h_t, edge_indices, node_masks, edge_masks, timestep)
             z_s = tf.concat([x_s, h_s], axis=-1)
-            z_t = z_s
-            if timestep % 10 == 0:
+            if timestep % 1 == 0:
+                print()
                 print(timestep)
-                print(z_t[0])
+                print("prev")
+                print(z_t)
+                print("next")
+                print(z_s)
+            z_t = z_s
 
         z_0 = None
         return z_0
@@ -321,7 +325,6 @@ class EquivariantGNNBlock(tf.keras.Model):
 
     def update_x(self, x_in, diff_ij, d_ij, feat, indices_i):
         x = self.dense_x(feat)
-        #x = tf.math.tanh(x) * self.scale_factor
         x = (diff_ij / (d_ij + 1.0)) * x  # (B, N*N, 3) * (B, N*N, 1) -> (B, N*N, 3)
         x_agg = segmnt_sum_by_node(x, indices_i)
         x_out = x_in + x_agg
