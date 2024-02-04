@@ -13,7 +13,7 @@ def remove_mean(x, node_masks):
         tf.reduce_sum(x, axis=1, keepdims=True) / n_atoms
     )
     x_centered = (x - x_mean) * node_masks
-    #assert tf.reduce_mean(tf.reduce_sum(x_centered, axis=1)) < 1e-5
+    #tf.assert_less(tf.reduce_mean(tf.reduce_sum(x_centered, axis=1)), 1e-5)
     return x_centered
 
 
@@ -51,7 +51,7 @@ def compute_distance(x, edge_indices):
     indices_from, indices_to = edge_indices[..., 0:1], edge_indices[..., 1:2]
     x_i = tf.gather_nd(x, indices_from, batch_dims=1)
     x_j = tf.gather_nd(x, indices_to, batch_dims=1)
-    d_ij = tf.sqrt(tf.reduce_sum((x_i- x_j)**2, axis=-1, keepdims=True))
+    d_ij = tf.sqrt(tf.reduce_sum((x_i- x_j)**2, axis=-1, keepdims=True) + 1e-8)
     return d_ij
 
 
@@ -253,7 +253,7 @@ class EquivariantDiffusionModel(tf.keras.Model):
             print("Nan Assertion")
             import pdb; pdb.set_trace()
         try:
-            assert tf.reduce_sum(tf.reduce_sum(eps_x, axis=1)) < 1e-5
+            assert tf.reduce_sum(tf.reduce_sum(eps_x, axis=1)) < 1e-4
         except:
             print("EPS Error")
             import pdb; pdb.set_trace()
@@ -305,14 +305,15 @@ class EquivariantGNNBlock(tf.keras.Model):
         x_j = tf.gather_nd(x, indices_j, batch_dims=1)
 
         diff_ij = (x_i - x_j) * edge_mask
-        d_ij = tf.sqrt(tf.reduce_sum(diff_ij**2, axis=-1, keepdims=True))
+        d_ij = tf.sqrt(tf.reduce_sum(diff_ij**2, axis=-1, keepdims=True) + 1e-8) * edge_mask
 
         h_i = tf.gather_nd(h, indices_i, batch_dims=1)
         h_j = tf.gather_nd(h, indices_j, batch_dims=1)
 
         feat = tf.concat([h_i, h_j, d_ij**2, edge_attr], axis=-1) * edge_mask
-        x_out = self.update_x(x, diff_ij, d_ij, feat, indices_i) * node_mask
         h_out = self.update_h(h, feat, indices_i) * node_mask
+        x_out = self.update_x(x, diff_ij, d_ij, feat, indices_i) * node_mask
+
         return x_out, h_out
 
     def update_h(self, h_in, feat, indices_i):

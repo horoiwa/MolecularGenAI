@@ -101,5 +101,5 @@ def test(checkpoint: int):
 
 
 if __name__ == '__main__':
-    #train(checkpoint=260000)
-    test(checkpoint=260_000)
+    #train(checkpoint=0)
+    test(checkpoint=120_000)
