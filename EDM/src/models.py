@@ -57,11 +57,11 @@ def compute_distance(x, edge_indices):
 
 class EquivariantDiffusionModel(tf.keras.Model):
 
-    def __init__(self, n_layers: int = 9):
+    def __init__(self, n_layers: int = 5):
         super(EquivariantDiffusionModel, self).__init__()
 
         self.T = 1000
-        self.scale_x, self.scale_h = 5.0, 4.0
+        self.scale_x, self.scale_h = 1.0, 4.0
         self.n_layers = n_layers
 
         self.alphas_cumprod, self.alphas, self.betas = get_polynomial_noise_schedule(self.T)
@@ -235,7 +235,7 @@ class EquivariantDiffusionModel(tf.keras.Model):
             tf.gather(self.alphas_cumprod_prev, indices=timesteps),
             shape=(-1, 1, 1)
         )
-        beta_t= tf.reshape(
+        beta_t = tf.reshape(
             tf.gather(self.betas, indices=timesteps),
             shape=(-1, 1, 1)
         )
@@ -293,7 +293,7 @@ class EquivariantGNNBlock(tf.keras.Model):
         self.dense_x = tf.keras.Sequential([
             kl.Dense(256, activation=tf.nn.silu, kernel_initializer='truncated_normal'),
             kl.Dense(256, activation=tf.nn.silu, kernel_initializer='truncated_normal'),
-            kl.Dense(1, activation=None, use_bias=False, kernel_initializer='truncated_normal'),
+            kl.Dense(1, activation=None, use_bias=True, kernel_initializer='truncated_normal'),
         ])
         self.scale_factor = 10.0
 
@@ -310,7 +310,7 @@ class EquivariantGNNBlock(tf.keras.Model):
         h_i = tf.gather_nd(h, indices_i, batch_dims=1)
         h_j = tf.gather_nd(h, indices_j, batch_dims=1)
 
-        feat = tf.concat([h_i, h_j, d_ij**2, edge_attr], axis=-1) * edge_mask
+        feat = tf.concat([h_i, h_j, d_ij, edge_attr], axis=-1) * edge_mask
         h_out = self.update_h(h, feat, indices_i) * node_mask
         x_out = self.update_x(x, diff_ij, d_ij, feat, indices_i) * node_mask
 

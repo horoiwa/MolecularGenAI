@@ -32,7 +32,6 @@ def to_sdf(z):
 def train(checkpoint: int = 0):
 
     model = EquivariantDiffusionModel()
-    dataset = load_dataset(filename="qm9.tfrecord")
     optimizer = tf.keras.optimizers.AdamW(learning_rate=1e-4, weight_decay=1e-12)
 
     logdir = Path(__file__).parent / "log"
@@ -48,40 +47,51 @@ def train(checkpoint: int = 0):
 
     summary_writer = tf.summary.create_file_writer(str(logdir))
     now = time.time()
-    start = 1 if checkpoint == 0 else checkpoint + 1
-    for i, (atom_coords, atom_types, edge_indices, node_masks, edge_masks) in enumerate(dataset, start=start):
-        with tf.GradientTape() as tape:
-            loss_xh, loss_x, loss_h = model.compute_loss(
-                atom_coords, atom_types, edge_indices, node_masks, edge_masks
-            )
-            loss_xh = tf.reduce_mean(loss_xh)
-            loss_x = tf.reduce_mean(loss_x)
-            loss_h = tf.reduce_mean(loss_h)
 
-        loss = loss_xh
-        variables = model.trainable_variables
-        grads = tape.gradient(loss, variables)
-        grads, norm = tf.clip_by_global_norm(grads, 100.0)
-        optimizer.apply_gradients(zip(grads, variables))
+    n = 0
+    i = 1 if checkpoint == 0 else checkpoint + 1
+    while True:
+        print("=========")
+        print(f"Epoch {n}")
+        print("=========")
 
-        if i % 100 == 0:
-            elapsed = time.time() - now
-            now = time.time()
-            tf.print("------------")
-            tf.print(i, loss.numpy(), norm.numpy())
-            tf.print(f"{elapsed:.1f}sec")
-            with summary_writer.as_default():
-                tf.summary.scalar("loss", loss_xh, step=i)
-                tf.summary.scalar("loss_x", loss_x, step=i)
-                tf.summary.scalar("loss_h", loss_h, step=i)
-                tf.summary.scalar("global_norm", norm, step=i)
+        dataset = load_dataset(filename="qm9.tfrecord")
+        for (atom_coords, atom_types, edge_indices, node_masks, edge_masks) in dataset:
+            with tf.GradientTape() as tape:
+                loss_xh, loss_x, loss_h = model.compute_loss(
+                    atom_coords, atom_types, edge_indices, node_masks, edge_masks
+                )
+                loss_xh = tf.reduce_mean(tf.reduce_sum(loss_xh, axis=1))
+                loss_x = tf.reduce_mean(loss_x)
+                loss_h = tf.reduce_mean(loss_h)
 
-        if i % 10_000 == 0:
-            save_path = savedir / f"edm_{i}"
-            model.save(str(save_path))
+            loss = loss_xh
+            variables = model.trainable_variables
+            grads = tape.gradient(loss, variables)
+            grads, norm = tf.clip_by_global_norm(grads, 100.0)
+            optimizer.apply_gradients(zip(grads, variables))
 
-        if i > 1_000_000:
-            break
+            if i % 100 == 0:
+                elapsed = time.time() - now
+                now = time.time()
+                tf.print("------------")
+                tf.print(i, loss.numpy(), norm.numpy())
+                tf.print(f"{elapsed:.1f}sec")
+                with summary_writer.as_default():
+                    tf.summary.scalar("loss", loss_xh, step=i)
+                    tf.summary.scalar("loss_x", loss_x, step=i)
+                    tf.summary.scalar("loss_h", loss_h, step=i)
+                    tf.summary.scalar("global_norm", norm, step=i)
+
+            if i % 10_000 == 0:
+                save_path = savedir / f"edm_{i}"
+                model.save(str(save_path))
+
+            if i > 1_000_000:
+                break
+            i += 1
+
+        n += 1
 
 
 def test(checkpoint: int):
@@ -101,5 +111,6 @@ def test(checkpoint: int):
 
 
 if __name__ == '__main__':
-    #train(checkpoint=0)
-    test(checkpoint=120_000)
+    train(checkpoint=0)
+    #train(checkpoint=80_000)
+    #test(checkpoint=10_000)
