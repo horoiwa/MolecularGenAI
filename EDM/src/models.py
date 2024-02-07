@@ -188,10 +188,13 @@ class EquivariantDiffusionModel(tf.keras.Model):
             z_s = tf.concat([x_s, h_s], axis=-1)
             z_t = z_s
 
-        x, h = z_t[..., :3] , z_t[..., 3:]
-        x, h = x * self.scale_x, h * self.scale_h
 
-        return x, h
+        results = []
+        for i in range(z_t.shape[0]):
+            x, h = z_t[i][..., :3] * self.scale_x, z_t[i][..., 3:] * self.scale_h
+            results.append((x, h))
+
+        return results
 
     def inv_diffusion(self, x_t, h_t, edge_indices, node_masks, edge_masks, timestep: int):
 

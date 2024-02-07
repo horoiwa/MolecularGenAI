@@ -2,10 +2,14 @@ from pathlib import Path
 import shutil
 import time
 
+import numpy as np
 import tensorflow as tf
+from rdkit import Chem
+from rdkit.Chem import AllChem, Draw, rdDetermineBonds
 
 from src.dataset import download_qm9, create_tfrecord, create_dataset_from_tfrecord
 from src.models import EquivariantDiffusionModel
+from src import settings
 
 
 DATASET_DIR = Path("./data")
@@ -90,14 +94,33 @@ def train(checkpoint: int = 0):
         n += 1
 
 
-def test(checkpoint: int):
+def create_xyz(coords: np.ndarray, atom_types: np.ndarray, n_atoms: int):
+    coords = coords.numpy()
+    atom_types = atom_types.numpy()
+
+    xyz_block = f"{n_atoms}\n"
+    xyz_block += "\n"
+    for i in range(n_atoms):
+        x, y, z = coords[i].tolist()
+        n = np.argmax(atom_types[i])
+        atom = settings.ATOM_MAP_INV[n]
+        xyz_block += f"{atom}      {x:.6f}   {y:.6f}   {z:.6f}\n"
+    mol = Chem.MolFromXYZBlock(xyz_block)
+    if settings.REMOVE_H:
+        mol = Chem.AddHs(mol)
+    rdDetermineBonds.DetermineBonds(mol)
+    import pdb; pdb.set_trace()
+    return mol
+
+def generate(checkpoint: int, n_atoms: int):
     model = EquivariantDiffusionModel()
     model.load_weights(f"checkpoints/edm_{checkpoint}")
-    dataset = load_dataset(filename="qm9.tfrecord", batch_size=1)
-    x, h = model.sample(n_atoms=4)
+    results = model.sample(n_atoms=n_atoms)
+    for x, h in results:
+        mol = create_xyz(x, h, n_atoms=n_atoms)
 
 
 if __name__ == '__main__':
     #train(checkpoint=130000)
     #train(checkpoint=80_000)
-    test(checkpoint=340_000)
+    generate(checkpoint=340_000, n_atoms=4)
