@@ -36,6 +36,18 @@ def get_polynomial_noise_schedule(T: int, s=1e-5):
     return alphas_cumprod, alphas, betas
 
 
+def get_cosine_noise_schedule(T: int, s=0.008):
+    """cosine_schedule"""
+    t = tf.cast(tf.range(0, T+1), tf.float32)
+    _alphas_cumprod = tf.cos(0.5 * np.pi * ((t / T) + s ) / (1 + s))**2
+    alphas_cumprod = _alphas_cumprod / _alphas_cumprod[0]
+    _betas = 1. - (alphas_cumprod[1:] / alphas_cumprod[:-1])
+    betas = tf.clip_by_value(_betas, clip_value_min=0., clip_value_max=0.999)
+    alphas = 1. - betas
+    alphas_cumprod = tf.math.cumprod(alphas)
+    return alphas_cumprod, alphas, betas
+
+
 def sample_gaussian_noise(shape_x, shape_h, node_masks):
     # ガウスノイズをサンプリング後、重心ゼロとなるよう並進移動
     eps_x = remove_mean(

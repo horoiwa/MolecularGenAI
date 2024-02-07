@@ -52,7 +52,7 @@ def train(checkpoint: int = 0):
     i = 1 if checkpoint == 0 else checkpoint + 1
     while True:
         print("=========")
-        print(f"Epoch {n}")
+        print(f"Epoch: {n}")
         print("=========")
 
         dataset = load_dataset(filename="qm9.tfrecord")
@@ -111,6 +111,6 @@ def test(checkpoint: int):
 
 
 if __name__ == '__main__':
-    train(checkpoint=0)
+    #train(checkpoint=130000)
     #train(checkpoint=80_000)
-    #test(checkpoint=10_000)
+    test(checkpoint=340_000)
