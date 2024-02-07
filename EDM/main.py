@@ -121,6 +121,6 @@ def generate(checkpoint: int, n_atoms: int):
 
 
 if __name__ == '__main__':
-    #train(checkpoint=130000)
+    train(checkpoint=0)
     #train(checkpoint=80_000)
-    generate(checkpoint=340_000, n_atoms=4)
+    #generate(checkpoint=340_000, n_atoms=6)
