@@ -25,10 +25,6 @@ def load_dataset(filename: str, batch_size: int = BATCH_SIZE):
     return dataset
 
 
-def to_sdf(z):
-    return None
-
-
 def train(checkpoint: int = 0):
 
     model = EquivariantDiffusionModel()
@@ -98,16 +94,7 @@ def test(checkpoint: int):
     model = EquivariantDiffusionModel()
     model.load_weights(f"checkpoints/edm_{checkpoint}")
     dataset = load_dataset(filename="qm9.tfrecord", batch_size=1)
-    mol = model.sample(n_atoms=4)
-    import pdb; pdb.set_trace()
-    for i, (atom_coords, atom_types, edge_indices, node_masks, edge_masks) in enumerate(dataset):
-        print()
-        print(atom_coords)
-        print(atom_types)
-        print()
-        mol = model._sample_tmp(
-            atom_coords, atom_types, edge_indices, node_masks, edge_masks
-        )
+    x, h = model.sample(n_atoms=4)
 
 
 if __name__ == '__main__':
