@@ -48,6 +48,7 @@ def get_cosine_noise_schedule(T: int, s=0.008):
     return alphas_cumprod, alphas, betas
 
 
+@tf.function
 def sample_gaussian_noise(shape_x, shape_h, node_masks):
     # ガウスノイズをサンプリング後、重心ゼロとなるよう並進移動
     eps_x = remove_mean(
