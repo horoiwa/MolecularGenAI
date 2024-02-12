@@ -13,7 +13,7 @@ from src import settings
 
 
 DATASET_DIR = Path("./data")
-BATCH_SIZE = 64
+BATCH_SIZE = 48
 
 
 def load_dataset(filename: str, batch_size: int = BATCH_SIZE):
@@ -108,9 +108,17 @@ def create_xyz(coords: np.ndarray, atom_types: np.ndarray, n_atoms: int):
     mol = Chem.MolFromXYZBlock(xyz_block)
     if settings.REMOVE_H:
         mol = Chem.AddHs(mol)
-    rdDetermineBonds.DetermineBonds(mol)
-    import pdb; pdb.set_trace()
+    try:
+        rdDetermineBonds.DetermineBonds(mol)
+    except:
+        pass
     return mol
+
+
+def write_to_sdf(mol, file_path):
+    with Chem.SDWriter(file_path) as writer:
+        writer.write(mol)
+
 
 def generate(checkpoint: int, n_atoms: int):
     model = EquivariantDiffusionModel()
@@ -118,9 +126,11 @@ def generate(checkpoint: int, n_atoms: int):
     results = model.sample(n_atoms=n_atoms)
     for x, h in results:
         mol = create_xyz(x, h, n_atoms=n_atoms)
+        write_to_sdf(mol, file_path="out/tmp.sdf")
+
 
 
 if __name__ == '__main__':
-    train(checkpoint=0)
-    #train(checkpoint=80_000)
-    #generate(checkpoint=340_000, n_atoms=6)
+    #train(checkpoint=0)
+    #train(checkpoint=160_000)
+    generate(checkpoint=350_000, n_atoms=20)

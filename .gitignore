@@ -4,6 +4,7 @@ __pycache__/
 *$py.class
 log/
 checkpoints*/
+out/
 
 # C extensions
 *.so
