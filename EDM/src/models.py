@@ -162,9 +162,9 @@ class EquivariantDiffusionModel(tf.keras.Model):
 
         return loss_z, loss_x, loss_h
 
-    def sample(self, n_atoms: int, batch_size: int = 1):
+    def sample(self, n_atoms: int):
 
-        B, N, D = batch_size, settings.MAX_NUM_ATOMS, settings.N_ATOM_TYPES
+        B, N, D = 1, settings.MAX_NUM_ATOMS, settings.N_ATOM_TYPES
         node_masks = tf.convert_to_tensor(
             [[[1.] if i < n_atoms else [0.] for i in range(N)]],
             dtype=tf.float32
@@ -179,6 +179,11 @@ class EquivariantDiffusionModel(tf.keras.Model):
             node_masks=node_masks
         )
 
+        history = []
+        checkpoints = (
+            list(range(50)) + list(range(50, 100, 2)) + list(range(100, 300, 5))
+            + list(range(300, 500, 10)) + list(range(500, 1000, 20)) + [1000]
+        )
         for timestep in reversed(range(1, self.T+1)):
             print(f"Step: {timestep}")
             x_t, h_t = z_t[..., :3], z_t[..., 3:]
@@ -188,13 +193,12 @@ class EquivariantDiffusionModel(tf.keras.Model):
             z_s = tf.concat([x_s, h_s], axis=-1)
             z_t = z_s
 
+            if timestep in checkpoints:
+                history.append((timestep, z_t[0][..., :3] * self.scale_x, z_t[0][..., 3:] * self.scale_h))
 
-        results = []
-        for i in range(z_t.shape[0]):
-            x, h = z_t[i][..., :3] * self.scale_x, z_t[i][..., 3:] * self.scale_h
-            results.append((x, h))
+        x, h = z_t[0][..., :3] * self.scale_x, z_t[0][..., 3:] * self.scale_h
 
-        return results
+        return x, h, history
 
     def inv_diffusion(self, x_t, h_t, edge_indices, node_masks, edge_masks, timestep: int):
 

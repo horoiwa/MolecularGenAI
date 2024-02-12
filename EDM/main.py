@@ -6,6 +6,9 @@ import numpy as np
 import tensorflow as tf
 from rdkit import Chem
 from rdkit.Chem import AllChem, Draw, rdDetermineBonds
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from matplotlib.animation import FuncAnimation, PillowWriter
 
 from src.dataset import download_qm9, create_tfrecord, create_dataset_from_tfrecord
 from src.models import EquivariantDiffusionModel
@@ -115,22 +118,75 @@ def create_xyz(coords: np.ndarray, atom_types: np.ndarray, n_atoms: int):
     return mol
 
 
-def write_to_sdf(mol, file_path):
-    with Chem.SDWriter(file_path) as writer:
+def create_animation(history, n_atoms, save_path):
+
+    # 3Dプロットの初期設定
+    #fig = plt.figure()
+    #ax = fig.add_subplot(111, projection='3d')
+    fig = plt.figure(figsize=(10, 5))
+    #ax1 = fig.add_subplot(131, projection='3d')
+    ax2 = fig.add_subplot(121, projection='3d')
+    ax3 = fig.add_subplot(122, projection='3d')
+    cmap = {"H": "white", "C": "gray", "O": "red", "N": "blue"}
+    smap = {"H": 50, "C": 150, "O": 150, "N": 150}
+    emap = {"H": "black", "C": "black", "O": "black", "N": "black"}
+
+    # アニメーションのための更新関数
+    def update(frame: int):
+        for key, ax in {"current": ax2, "end": ax3}.items():
+            ax.clear()  # 前のフレームのプロットをクリア
+            ax.view_init(elev=30, azim=-65)
+            if key == "current":
+                timestep, coords, h = history[frame]
+                print(timestep)
+            elif key == "start":
+                timestep, coords, h = history[0]
+            elif key == "end":
+                timestep, coords, h = history[-1]
+
+            coords, h = coords.numpy(), h.numpy()
+            for i in range(n_atoms):
+                x, y, z = coords[i].tolist()
+                atom_type = settings.ATOM_MAP_INV[np.argmax(h[i])]
+                ax.scatter(
+                    x, y, z, color=cmap[atom_type], s=smap[atom_type],
+                    edgecolors=emap[atom_type], linewidths=0.4
+                )
+                ax.set_title(f"timestep: {timestep}")
+
+            ax.set_xlim(-3, 3)  # z軸の範囲を固定
+            ax.set_ylim(-3, 3)  # z軸の範囲を固定
+            ax.set_zlim(-3, 3)  # z軸の範囲を固定
+            ax.set_xticklabels([])
+            ax.set_yticklabels([])
+            ax.set_zticklabels([])
+
+    # アニメーションの作成
+    ani = FuncAnimation(
+        fig, update, frames=np.arange(0, len(history)),
+        interval=100, repeat_delay=3000
+    )
+    writer = PillowWriter(fps=15)
+    ani.save(save_path, writer=writer)
+
+
+def write_to_sdf(mol, save_path):
+    with Chem.SDWriter(save_path) as writer:
         writer.write(mol)
 
 
 def generate(checkpoint: int, n_atoms: int):
+
     model = EquivariantDiffusionModel()
     model.load_weights(f"checkpoints/edm_{checkpoint}")
-    results = model.sample(n_atoms=n_atoms)
-    for x, h in results:
-        mol = create_xyz(x, h, n_atoms=n_atoms)
-        write_to_sdf(mol, file_path="out/tmp.sdf")
+
+    x_0, h_0, history = model.sample(n_atoms=n_atoms)
+    create_animation(history, n_atoms, save_path="out/trajectory.gif")
+    mol = create_xyz(x_0, h_0, n_atoms=n_atoms)
+    write_to_sdf(mol, save_path="out/sampled.sdf")
 
 
 
 if __name__ == '__main__':
-    #train(checkpoint=0)
-    #train(checkpoint=160_000)
+    #train(checkpoint=350_000)
     generate(checkpoint=350_000, n_atoms=20)
