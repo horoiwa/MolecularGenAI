@@ -8,7 +8,6 @@ import io
 
 import tensorflow as tf
 from rdkit import Chem
-from rdkit.Chem import Descriptors
 from tqdm import tqdm
 
 from src import settings
@@ -27,7 +26,7 @@ def create_tfrecord(dataset_dir: Path, filename: str):
     coords_all, atoms_all, masks_all, edges_all, edge_masks_all = [], [], [], [], []
 
     sdf_path = dataset_dir / "gdb9.sdf"
-    sdf_supplier = Chem.SDMolSupplier(str(sdf_path), removeHs=False)
+    sdf_supplier = Chem.SDMolSupplier(str(sdf_path), removeHs=settings.REMOVE_H)
     for n, mol in enumerate(sdf_supplier):
         if mol is None:
             print(f"SKIP {n}: None")
@@ -36,6 +35,9 @@ def create_tfrecord(dataset_dir: Path, filename: str):
         n_atoms = mol.GetNumAtoms()
         if n_atoms > settings.MAX_NUM_ATOMS:
             print(f"SKIP {n}: NUM ATOMS {n_atoms} > {settings.MAX_NUM_ATOMS}")
+            continue
+        if n_atoms < settings.MIN_NUM_ATOMS:
+            print(f"SKIP {n}: NUM ATOMS {n_atoms} < 3")
             continue
 
         mask = [[1.] if i < n_atoms else [0.] for i in range(settings.MAX_NUM_ATOMS)]
@@ -117,7 +119,7 @@ def get_edges(n_atoms: int):
     edges = tf.convert_to_tensor(edges, dtype=tf.int32)
 
     edge_masks = [
-        [1] if (i < n_atoms) and (i < n_atoms) and (i != j) else [0]
+        [1] if (i < n_atoms) and (j < n_atoms) and (i != j) else [0]
         for i, j in itertools.product(indices, indices)
     ]
     edge_masks = tf.convert_to_tensor(edge_masks, dtype=tf.float32)
@@ -164,10 +166,9 @@ def create_dataset_from_tfrecord(tfrecord_path: str, batch_size: int):
             filenames=[tfrecord_path],
             num_parallel_reads=tf.data.AUTOTUNE,
         )
-        .shuffle(2048, reshuffle_each_iteration=True)
-        .repeat()
-        .map(deserialize, num_parallel_calls=tf.data.AUTOTUNE)
+        .shuffle(1024, reshuffle_each_iteration=True)
+        .map(deserialize, num_parallel_calls=2)
         .batch(batch_size)
-        .prefetch(tf.data.AUTOTUNE)
+        .prefetch(64*4)
     )
     return dataset
